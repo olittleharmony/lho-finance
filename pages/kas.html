@@ -116,7 +116,9 @@
           <label>Nominal Pembayaran <span style="color:#c62828">*</span></label>
           <input type="number" id="kas-amount" placeholder="0" min="0" step="1000"
             oninput="checkCoverage()">
-          <div class="form-hint" id="kas-rate-hint">Kas per bulan: memuat...</div>
+          <div class="form-hint" id="kas-rate-hint">
+            Kas per bulan: memuat... · Nominal otomatis terisi saat pilih bulan
+          </div>
         </div>
 
         <!-- Coverage indicator -->
@@ -212,7 +214,7 @@
       const setting = await getKasSetting();
       kasPerBulan = Number(setting.kas_amount || 0);
       document.getElementById('kas-rate-hint').textContent =
-        `Kas per bulan: ${formatRupiah(kasPerBulan)}`;
+        `Kas per bulan: ${formatRupiah(kasPerBulan)} · Nominal otomatis terisi saat pilih bulan`;
     } catch(e) { console.error(e); }
 
     // Drag & drop
@@ -326,6 +328,10 @@
     } else {
       selectedMonths.add(period);
       btn.classList.add('selected');
+    }
+    // Auto-fill nominal sesuai jumlah bulan dipilih
+    if (kasPerBulan > 0) {
+      document.getElementById('kas-amount').value = selectedMonths.size * kasPerBulan;
     }
     checkCoverage();
   }
