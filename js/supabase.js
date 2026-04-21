@@ -39,7 +39,7 @@ async function signIn(email, password) {
 
 async function signOut() {
   await getSupabase().auth.signOut();
-  window.location.href = '/lho-finance/index.html';
+  window.location.href = 'https://olittleharmony.github.io/member/index.html';
 }
 
 async function updatePassword(newPassword) {
@@ -51,7 +51,7 @@ async function updatePassword(newPassword) {
 async function requireAuth(requiredRole = null) {
   const profile = await getCurrentProfile();
   if (!profile) {
-    window.location.href = '/lho-finance/index.html';
+    window.location.href = 'https://olittleharmony.github.io/member/index.html';
     return null;
   }
   if (!profile.is_active) {
@@ -59,8 +59,7 @@ async function requireAuth(requiredRole = null) {
     return null;
   }
   if (requiredRole && profile.role !== requiredRole) {
-    // Member coba akses halaman admin → redirect ke dashboard member
-    window.location.href = '/lho-finance/pages/dashboard.html';
+    window.location.href = 'https://olittleharmony.github.io/member/hub.html';
     return null;
   }
   return profile;
