@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor Kas — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .kas-cell {
+      width:36px; height:36px; border-radius:6px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:11px; font-weight:600; cursor:default;
+    }
+    .kas-confirmed { background:#2e7d32; color:#fff; }
+    .kas-pending   { background:#fff3e0; color:#e65100; border:1px solid #ffcc80; }
+    .kas-rejected  { background:#ffebee; color:#c62828; border:1px solid #ffcdd2; }
+    .kas-empty     { background:#f5f5f5; color:#bbb; border:1px solid #e0e0e0; }
+    .legend-item   { display:flex; align-items:center; gap:6px; font-size:12px; color:#555; }
+    .leg-box       { width:16px; height:16px; border-radius:3px; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Monitor Kas Member</h1>
+        <p>Pantau status pembayaran kas semua member</p>
+      </div>
+      <a href="admin-kas-import.html" class="btn btn-gold btn-sm">
+        Import Data Lama
+      </a>
+    </div>
+
+    <!-- Filter -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="filter-bar" style="margin-bottom:0">
+        <div class="form-group">
+          <label>Tampilan</label>
+          <select id="view-mode" onchange="renderView()">
+            <option value="heatmap">Heatmap per bulan</option>
+            <option value="belum-bayar">Belum bayar bulan ini</option>
+            <option value="tunggakan">Semua tunggakan</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tahun</label>
+          <select id="filter-year" onchange="loadData()"></select>
+        </div>
+        <div class="form-group">
+          <label>Bulan (untuk filter)</label>
+          <select id="filter-month">
+            <option value="">Semua bulan</option>
+            <option value="01">Januari</option>
+            <option value="02">Februari</option>
+            <option value="03">Maret</option>
+            <option value="04">April</option>
+            <option value="05">Mei</option>
+            <option value="06">Juni</option>
+            <option value="07">Juli</option>
+            <option value="08">Agustus</option>
+            <option value="09">September</option>
+            <option value="10">Oktober</option>
+            <option value="11">November</option>
+            <option value="12">Desember</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Divisi</label>
+          <select id="filter-division" onchange="renderView()">
+            <option value="">Semua</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Cari member</label>
+          <input type="text" id="search" placeholder="Nama..." oninput="renderView()">
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadData()"
+          style="align-self:flex-end;margin-bottom:0">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-grid" style="margin-bottom:20px" id="stats-grid">
+      <div class="stat-card green">
+        <div class="stat-label">Lunas bulan ini</div>
+        <div class="stat-value" id="st-lunas">—</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Belum bayar</div>
+        <div class="stat-value" id="st-belum">—</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Menunggu konfirmasi</div>
+        <div class="stat-value" id="st-pending">—</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Total tunggakan</div>
+        <div class="stat-value" id="st-tunggak">—</div>
+      </div>
+    </div>
+
+    <!-- Konten utama -->
+    <div class="card" id="main-card">
+      <div class="card-header">
+        <h3 id="view-title">Heatmap Pembayaran Kas</h3>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div class="legend-item">
+            <div class="leg-box" style="background:#2e7d32"></div> Lunas
+          </div>
+          <div class="legend-item">
+            <div class="leg-box" style="background:#fff3e0;border:1px solid #ffcc80"></div> Pending
+          </div>
+          <div class="legend-item">
+            <div class="leg-box" style="background:#f5f5f5;border:1px solid #e0e0e0"></div> Belum bayar
+          </div>
+        </div>
+      </div>
+      <div id="main-content">
+        <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','Mei','Jun',
+                        'Jul','Agu','Sep','Okt','Nov','Des'];
+  let allProfiles  = [];
+  let allPayments  = [];
+  let kasPerBulan  = 0;
+
+  async function init() {
+    const profile = await requireAuth('admin');
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-laporan');
+
+    // Populate tahun
+    const yearSel  = document.getElementById('filter-year');
+    const thisYear = new Date().getFullYear();
+    for (let y = thisYear - 2; y <= thisYear; y++) {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = y;
+      opt.selected = y === thisYear;
+      yearSel.appendChild(opt);
+    }
+
+    await loadData();
+  }
+
+  async function loadData() {
+    try {
+      const year = document.getElementById('filter-year').value;
+      const [profiles, payments, setting] = await Promise.all([
+        getAllProfiles(),
+        getSupabase().from('payments').select(`
+          id, user_id, period, status, amount, reviewed_at,
+          profiles!user_id(full_name, division)
+        `).eq('type','kas')
+          .gte('period', `${year}-01`)
+          .lte('period', `${year}-12`)
+          .then(r => r.data || []),
+        getKasSetting(),
+      ]);
+
+      allProfiles = profiles.filter(p => p.is_active && p.role === 'member');
+      allPayments = payments;
+      kasPerBulan = Number(setting.kas_amount || 0);
+
+      // Populate divisi filter
+      const divisi = [...new Set(allProfiles.map(p => p.division).filter(Boolean))].sort();
+      const divSel = document.getElementById('filter-division');
+      divSel.innerHTML = '<option value="">Semua</option>' +
+        divisi.map(d => `<option value="${d}">${d}</option>`).join('');
+
+      updateStats();
+      renderView();
+    } catch(err) { showToast(err.message, 'error'); }
+  }
+
+  function updateStats() {
+    const year      = document.getElementById('filter-year').value;
+    const thisMonth = String(new Date().getMonth()+1).padStart(2,'0');
+    const thisPeriod = `${year}-${thisMonth}`;
+
+    const memberIds = allProfiles.map(p => p.id);
+    const lunas   = new Set(allPayments
+      .filter(p => p.period === thisPeriod && p.status === 'confirmed')
+      .map(p => p.user_id));
+    const pending = new Set(allPayments
+      .filter(p => p.period === thisPeriod && p.status === 'pending')
+      .map(p => p.user_id));
+    const belum   = memberIds.filter(id => !lunas.has(id) && !pending.has(id));
+
+    // Hitung tunggakan: bulan lalu ke bawah yang belum lunas
+    const now = new Date();
+    let tunggak = 0;
+    for (let m = 1; m <= now.getMonth(); m++) {
+      const period = `${year}-${String(m).padStart(2,'0')}`;
+      const lunasIds = new Set(allPayments
+        .filter(p => p.period === period && p.status === 'confirmed')
+        .map(p => p.user_id));
+      tunggak += memberIds.filter(id => !lunasIds.has(id)).length;
+    }
+
+    document.getElementById('st-lunas').textContent   = lunas.size;
+    document.getElementById('st-belum').textContent   = belum.length;
+    document.getElementById('st-pending').textContent = pending.size;
+    document.getElementById('st-tunggak').textContent = tunggak;
+  }
+
+  function getFilteredProfiles() {
+    const div    = document.getElementById('filter-division').value;
+    const search = document.getElementById('search').value.toLowerCase();
+    let profiles = allProfiles;
+    if (div)    profiles = profiles.filter(p => p.division === div);
+    if (search) profiles = profiles.filter(p =>
+      p.full_name?.toLowerCase().includes(search));
+    return profiles;
+  }
+
+  function renderView() {
+    const mode = document.getElementById('view-mode').value;
+    const year = document.getElementById('filter-year').value;
+    const titles = {
+      heatmap:    'Heatmap Pembayaran Kas ' + year,
+      'belum-bayar': 'Member Belum Bayar Bulan Ini',
+      tunggakan:  'Semua Tunggakan ' + year,
+    };
+    document.getElementById('view-title').textContent = titles[mode];
+
+    if (mode === 'heatmap')     renderHeatmap(year);
+    if (mode === 'belum-bayar') renderBelumBayar(year);
+    if (mode === 'tunggakan')   renderTunggakan(year);
+  }
+
+  function renderHeatmap(year) {
+    const profiles = getFilteredProfiles();
+    const el = document.getElementById('main-content');
+    if (profiles.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-text">Tidak ada member</div></div>`;
+      return;
+    }
+
+    // Build lookup: user_id+period → status
+    const lookup = {};
+    allPayments.forEach(p => { lookup[`${p.user_id}::${p.period}`] = p.status; });
+
+    const now = new Date();
+    const maxMonth = Number(year) === now.getFullYear() ? now.getMonth() + 1 : 12;
+
+    el.innerHTML = `
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;font-size:13px;min-width:600px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px 12px;background:#1a1a2e;
+                color:#fff;font-size:11px;letter-spacing:0.4px;
+                text-transform:uppercase;min-width:160px">Member</th>
+              <th style="text-align:left;padding:8px 8px;background:#1a1a2e;
+                color:#fff;font-size:11px;min-width:80px">Divisi</th>
+              ${MONTHS_SHORT.slice(0, maxMonth).map((m,i) => `
+                <th style="padding:8px 4px;background:#1a1a2e;color:#fff;
+                  font-size:11px;text-align:center;width:42px">${m}</th>
+              `).join('')}
+              <th style="padding:8px 8px;background:#1a1a2e;color:#fff;
+                font-size:11px;text-align:center">Lunas</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${profiles.map(p => {
+              let lunas = 0;
+              const cells = MONTHS_SHORT.slice(0, maxMonth).map((m, i) => {
+                const period = `${year}-${String(i+1).padStart(2,'0')}`;
+                const status = lookup[`${p.id}::${period}`];
+                let cls = 'kas-empty', label = '—';
+                if (status === 'confirmed') { cls='kas-confirmed'; label='✓'; lunas++; }
+                if (status === 'pending')   { cls='kas-pending';   label='⏳'; }
+                if (status === 'rejected')  { cls='kas-rejected';  label='✕'; }
+                return `<td style="padding:4px">
+                  <div class="kas-cell ${cls}" title="${formatPeriod(period)}">${label}</div>
+                </td>`;
+              }).join('');
+              return `
+                <tr style="border-bottom:1px solid #f5f5f5">
+                  <td style="padding:8px 12px;font-weight:500;font-size:13px">
+                    ${p.full_name}
+                  </td>
+                  <td style="padding:8px 8px;font-size:12px;color:#888">
+                    ${p.division||'—'}
+                  </td>
+                  ${cells}
+                  <td style="padding:8px;text-align:center;font-weight:600;
+                    color:${lunas===maxMonth?'#2e7d32':lunas>0?'#e65100':'#c62828'}">
+                    ${lunas}/${maxMonth}
+                  </td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderBelumBayar(year) {
+    const now = new Date();
+    const month = String(now.getMonth()+1).padStart(2,'0');
+    const period = `${year}-${month}`;
+    const profiles = getFilteredProfiles();
+    const lunasIds = new Set(allPayments
+      .filter(p => p.period === period && p.status === 'confirmed')
+      .map(p => p.user_id));
+    const pendingIds = new Set(allPayments
+      .filter(p => p.period === period && p.status === 'pending')
+      .map(p => p.user_id));
+
+    const belum = profiles.filter(p => !lunasIds.has(p.id) && !pendingIds.has(p.id));
+    const pending = profiles.filter(p => pendingIds.has(p.id));
+    const el = document.getElementById('main-content');
+
+    if (belum.length === 0 && pending.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">✓</div>
+        <div class="empty-text">Semua member sudah bayar ${formatPeriod(period)}!</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      ${pending.length > 0 ? `
+        <h4 style="font-size:14px;color:#e65100;margin-bottom:10px">
+          ⏳ Menunggu konfirmasi (${pending.length} member)
+        </h4>
+        <div style="margin-bottom:20px">
+          ${pending.map(p => memberRow(p, 'pending')).join('')}
+        </div>` : ''}
+      ${belum.length > 0 ? `
+        <h4 style="font-size:14px;color:#c62828;margin-bottom:10px">
+          ✕ Belum bayar ${formatPeriod(period)} (${belum.length} member)
+        </h4>
+        ${belum.map(p => memberRow(p, 'empty')).join('')}` : ''}`;
+  }
+
+  function renderTunggakan(year) {
+    const profiles = getFilteredProfiles();
+    const now = new Date();
+    const maxMonth = Number(year) === now.getFullYear() ? now.getMonth() : 12;
+    const el = document.getElementById('main-content');
+    const rows = [];
+
+    for (let m = 1; m <= maxMonth; m++) {
+      const period   = `${year}-${String(m).padStart(2,'0')}`;
+      const lunasIds = new Set(allPayments
+        .filter(p => p.period === period && p.status === 'confirmed')
+        .map(p => p.user_id));
+      const belum = profiles.filter(p => !lunasIds.has(p.id));
+      if (belum.length > 0) {
+        rows.push({ period, belum });
+      }
+    }
+
+    if (rows.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">✓</div>
+        <div class="empty-text">Tidak ada tunggakan!</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = rows.map(r => `
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;
+          margin-bottom:8px">
+          <h4 style="font-size:14px;color:#c62828">${formatPeriod(r.period)}</h4>
+          <span style="font-size:13px;color:#888">${r.belum.length} belum bayar</span>
+        </div>
+        ${r.belum.map(p => memberRow(p, 'empty')).join('')}
+      </div>`).join('');
+  }
+
+  function memberRow(p, status) {
+    const colors = {
+      pending: { bg:'#fff3e0', color:'#e65100', label:'Pending' },
+      empty:   { bg:'#ffebee', color:'#c62828', label:'Belum bayar' },
+    };
+    const c = colors[status] || colors.empty;
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;
+        border-radius:8px;background:${c.bg};margin-bottom:6px">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:500">${p.full_name}</div>
+          <div style="font-size:12px;color:#888">${p.division||'—'}</div>
+        </div>
+        <span style="font-size:12px;font-weight:600;color:${c.color}">
+          ${c.label}
+        </span>
+      </div>`;
+  }
+
+  init();
+</script>
+</body>
+</html>

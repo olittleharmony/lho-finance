@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Status Kas — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .year-tab {
+      padding:6px 16px; border:1.5px solid #e0e0e0;
+      border-radius:20px; font-size:13px; font-weight:500;
+      font-family:inherit; background:#fff; color:#555;
+      cursor:pointer; transition:all .15s;
+    }
+    .year-tab.active {
+      background:#1a1a2e; color:#fff; border-color:#1a1a2e;
+    }
+    .month-card {
+      border-radius:10px; padding:16px;
+      border:1.5px solid #e0e0e0; background:#fff;
+      transition:all .15s; position:relative;
+    }
+    .month-card.confirmed {
+      border-color:#a5d6a7; background:#f1f8f1;
+    }
+    .month-card.pending {
+      border-color:#ffcc80; background:#fffaf0;
+    }
+    .month-card.rejected {
+      border-color:#ffcdd2; background:#fff5f5;
+    }
+    .month-card.empty {
+      background:#fafafa;
+    }
+    .month-name {
+      font-size:15px; font-weight:600; margin-bottom:4px;
+    }
+    .month-status { font-size:12px; font-weight:600; }
+    .month-amount { font-size:13px; color:#555; margin-top:4px; }
+    .month-date   { font-size:11px; color:#aaa; margin-top:2px; }
+    .pay-btn {
+      display:block; width:100%; margin-top:10px;
+      padding:7px; background:#1a1a2e; color:#fff;
+      border:none; border-radius:6px; font-size:12px;
+      font-weight:500; font-family:inherit;
+      cursor:pointer; text-align:center; text-decoration:none;
+      transition:background .15s;
+    }
+    .pay-btn:hover { background:#2d2d5e; }
+    .progress-bar {
+      height:8px; background:#e0e0e0;
+      border-radius:99px; overflow:hidden; margin-bottom:8px;
+    }
+    .progress-fill {
+      height:100%; background:#2e7d32; border-radius:99px; transition:width .4s;
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Status Kas Saya</h1>
+        <p>Riwayat dan status pembayaran kas per bulan</p>
+      </div>
+      <a href="kas.html" class="btn btn-primary">+ Bayar Kas</a>
+    </div>
+
+    <!-- Ringkasan tahun ini -->
+    <div class="stat-grid" style="margin-bottom:24px" id="summary-stats">
+      <div class="stat-card green">
+        <div class="stat-label">Bulan lunas</div>
+        <div class="stat-value" id="st-lunas">—</div>
+        <div class="stat-sub" id="st-lunas-sub"></div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Belum bayar</div>
+        <div class="stat-value" id="st-belum">—</div>
+        <div class="stat-sub">Bulan yang terlewat</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Total dibayar</div>
+        <div class="stat-value" id="st-total">—</div>
+        <div class="stat-sub">Tahun ini</div>
+      </div>
+      <div class="stat-card" id="card-sisa">
+        <div class="stat-label">Sisa bulan</div>
+        <div class="stat-value" id="st-sisa">—</div>
+        <div class="stat-sub" id="st-sisa-sub"></div>
+      </div>
+    </div>
+
+    <!-- Progress bar tahun ini -->
+    <div class="card" style="margin-bottom:20px" id="progress-card">
+      <div style="display:flex;justify-content:space-between;
+        font-size:13px;margin-bottom:6px">
+        <span id="progress-label">Kepatuhan kas tahun ini</span>
+        <span id="progress-pct" style="font-weight:600"></span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Tab tahun -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px" id="year-tabs"></div>
+
+    <!-- Grid bulan -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+      gap:12px" id="month-grid">
+      <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  const MONTHS_FULL = ['Januari','Februari','Maret','April','Mei','Juni',
+                       'Juli','Agustus','September','Oktober','November','Desember'];
+  let profile      = null;
+  let allPayments  = [];
+  let kasPerBulan  = 0;
+  let activeYear   = new Date().getFullYear();
+
+  async function init() {
+    profile = await requireAuth();
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'riwayat');
+
+    const setting = await getKasSetting();
+    kasPerBulan   = Number(setting.kas_amount || 0);
+
+    allPayments = await getMyPayments('kas');
+
+    buildYearTabs();
+    renderYear(activeYear);
+  }
+
+  function buildYearTabs() {
+    const years = new Set();
+    const thisYear = new Date().getFullYear();
+    years.add(thisYear);
+    allPayments.forEach(p => {
+      if (p.period) years.add(Number(p.period.split('-')[0]));
+    });
+    const sorted = [...years].sort().reverse();
+
+    const tabsEl = document.getElementById('year-tabs');
+    tabsEl.innerHTML = sorted.map(y => `
+      <button class="year-tab ${y === activeYear ? 'active' : ''}"
+        onclick="switchYear(${y})">${y}</button>
+    `).join('');
+  }
+
+  function switchYear(year) {
+    activeYear = year;
+    document.querySelectorAll('.year-tab').forEach(b => {
+      b.classList.toggle('active', Number(b.textContent) === year);
+    });
+    renderYear(year);
+  }
+
+  function renderYear(year) {
+    const now      = new Date();
+    const isThisYear = year === now.getFullYear();
+    const maxMonth = isThisYear ? now.getMonth() + 1 : 12;
+
+    // Build lookup period → payment
+    const lookup = {};
+    allPayments.forEach(p => { if (p.period) lookup[p.period] = p; });
+
+    // Stats
+    let lunas = 0, belum = 0, totalPaid = 0;
+    for (let m = 1; m <= maxMonth; m++) {
+      const period = `${year}-${String(m).padStart(2,'0')}`;
+      const pay    = lookup[period];
+      if (pay?.status === 'confirmed') { lunas++; totalPaid += Number(pay.amount); }
+      else if (!pay || pay.status === 'rejected') belum++;
+    }
+    const pct   = maxMonth > 0 ? Math.round((lunas / maxMonth) * 100) : 0;
+    const sisa  = isThisYear ? 12 - now.getMonth() - 1 : 0;
+
+    document.getElementById('st-lunas').textContent     = lunas;
+    document.getElementById('st-lunas-sub').textContent = `dari ${maxMonth} bulan`;
+    document.getElementById('st-belum').textContent     = belum;
+    document.getElementById('st-total').textContent     = formatRupiah(totalPaid);
+    document.getElementById('st-sisa').textContent      = sisa;
+    document.getElementById('st-sisa-sub').textContent  =
+      sisa > 0 ? `Bulan tersisa di ${year}` : year < now.getFullYear()
+        ? 'Tahun sudah selesai' : 'Sudah bulan terakhir';
+    document.getElementById('progress-pct').textContent = pct + '%';
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-fill').style.background =
+      pct === 100 ? '#2e7d32' : pct >= 75 ? '#c9a84c' : '#e65100';
+    document.getElementById('progress-label').textContent =
+      `Kepatuhan kas ${year}`;
+
+    // Render grid 12 bulan
+    const grid = document.getElementById('month-grid');
+    grid.innerHTML = MONTHS_FULL.map((m, i) => {
+      const monthNum = i + 1;
+      const period   = `${year}-${String(monthNum).padStart(2,'0')}`;
+      const pay      = lookup[period];
+      const isPast   = monthNum <= maxMonth;
+      const isFuture = monthNum > maxMonth && isThisYear;
+
+      let cls = 'empty', statusLabel = '—', statusColor = '#aaa';
+      let amountEl = '', dateEl = '', actionEl = '';
+
+      if (pay?.status === 'confirmed') {
+        cls = 'confirmed'; statusLabel = 'Lunas ✓'; statusColor = '#2e7d32';
+        amountEl = `<div class="month-amount">${formatRupiah(pay.amount)}</div>`;
+        dateEl   = `<div class="month-date">
+          Dikonfirmasi ${formatDate(pay.reviewed_at)}
+        </div>`;
+      } else if (pay?.status === 'pending') {
+        cls = 'pending'; statusLabel = 'Menunggu ⏳'; statusColor = '#e65100';
+        amountEl = `<div class="month-amount">${formatRupiah(pay.amount)}</div>`;
+        dateEl   = `<div class="month-date">
+          Dikirim ${formatDate(pay.created_at)}
+        </div>`;
+      } else if (pay?.status === 'rejected') {
+        cls = 'rejected'; statusLabel = 'Ditolak ✕'; statusColor = '#c62828';
+        amountEl = `<div class="month-amount">${formatRupiah(pay.amount)}</div>`;
+        if (pay.review_notes) {
+          dateEl = `<div class="month-date" style="color:#c62828">
+            ${pay.review_notes}
+          </div>`;
+        }
+        actionEl = `<a href="kas.html" class="pay-btn">Submit Ulang</a>`;
+      } else if (isPast && !isFuture) {
+        cls = 'empty'; statusLabel = 'Belum bayar'; statusColor = '#c62828';
+        if (kasPerBulan > 0) {
+          amountEl = `<div class="month-amount" style="color:#aaa">
+            ${formatRupiah(kasPerBulan)}
+          </div>`;
+        }
+        actionEl = `<a href="kas.html" class="pay-btn">Bayar Sekarang</a>`;
+      } else {
+        cls = 'empty'; statusLabel = 'Belum jatuh tempo'; statusColor = '#bbb';
+      }
+
+      return `
+        <div class="month-card ${cls}">
+          <div class="month-name">${m}</div>
+          <div class="month-status" style="color:${statusColor}">
+            ${statusLabel}
+          </div>
+          ${amountEl}
+          ${dateEl}
+          ${actionEl}
+        </div>`;
+    }).join('');
+  }
+
+  init();
+</script>
+</body>
+</html>

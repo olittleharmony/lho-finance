@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import Kas Lama — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .status-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+    .status-ready     { background:#e8f5e9; color:#2e7d32; }
+    .status-duplicate { background:#e3f2fd; color:#1565c0; }
+    .status-unmatched { background:#ffebee; color:#c62828; }
+    .status-error     { background:#fff3e0; color:#e65100; }
+    .stat-mini { text-align:center; padding:16px; background:#f9f9f9;
+      border-radius:8px; border:1px solid #e0e0e0; }
+    .stat-mini .num { font-size:28px; font-weight:700; }
+    .stat-mini .lbl { font-size:12px; color:#888; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Import Data Kas Lama</h1>
+        <p>Baca tab "Data Kas Lama" dari Google Sheets dan import ke Supabase</p>
+      </div>
+      <a href="admin-laporan.html" class="btn btn-ghost">← Kembali</a>
+    </div>
+
+    <!-- Step 1: Preview -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <h3>Step 1 — Preview data</h3>
+        <button class="btn btn-primary" id="btn-preview" onclick="handlePreview()">
+          Baca Sheet & Preview
+        </button>
+      </div>
+      <p style="font-size:13px;color:#555;margin-bottom:0">
+        Klik tombol untuk membaca tab <strong>Data Kas Lama</strong> dari sheet
+        <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px">1Bgox...</code>.
+        Data akan dicocokkan dengan nama member di database. Tidak ada yang diubah di tahap ini.
+      </p>
+    </div>
+
+    <!-- Stats preview -->
+    <div id="stats-section" style="display:none;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        <div class="stat-mini">
+          <div class="num" id="st-total">0</div>
+          <div class="lbl">Total baris</div>
+        </div>
+        <div class="stat-mini" style="border-color:#a5d6a7">
+          <div class="num" style="color:#2e7d32" id="st-ready">0</div>
+          <div class="lbl">Siap diimport</div>
+        </div>
+        <div class="stat-mini" style="border-color:#ffcc80">
+          <div class="num" style="color:#e65100" id="st-unmatched">0</div>
+          <div class="lbl">Nama tidak cocok</div>
+        </div>
+        <div class="stat-mini" style="border-color:#90caf9">
+          <div class="num" style="color:#1565c0" id="st-duplicate">0</div>
+          <div class="lbl">Sudah ada (skip)</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Preview hasil pencocokan</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="preview-filter" onchange="filterPreview()"
+              style="font-size:13px;padding:4px 8px">
+              <option value="">Semua</option>
+              <option value="ready">Siap import</option>
+              <option value="unmatched">Tidak cocok</option>
+              <option value="duplicate">Sudah ada</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Baris</th>
+                <th>Nama di Sheet</th>
+                <th>Dicocokkan ke</th>
+                <th>Bulan</th>
+                <th>Nominal</th>
+                <th>Status</th>
+                <th>Keterangan</th>
+              </tr>
+            </thead>
+            <tbody id="preview-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Step 2: Eksekusi -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <h3>Step 2 — Eksekusi import</h3>
+        </div>
+        <div style="background:#fff3e0;border-radius:8px;padding:14px;
+          font-size:13px;color:#e65100;margin-bottom:16px">
+          <strong>⚠ Perhatian:</strong> Data yang diimport akan langsung berstatus
+          <strong>Confirmed</strong> karena dianggap sudah lunas. Proses ini tidak bisa dibatalkan.
+          Pastikan preview sudah benar sebelum melanjutkan.
+        </div>
+        <div id="unmatched-warning" style="display:none;background:#ffebee;
+          border-radius:8px;padding:14px;font-size:13px;color:#c62828;margin-bottom:16px">
+        </div>
+        <button class="btn btn-primary" id="btn-execute" onclick="handleExecute()"
+          style="display:none">
+          Import Sekarang (<span id="import-count">0</span> data)
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/gas.js"></script>
+<script>
+  let previewData = [];
+
+  async function init() {
+    const profile = await requireAuth('admin');
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-laporan');
+  }
+
+  async function handlePreview() {
+    const btn = document.getElementById('btn-preview');
+    setLoading(btn, true, 'Membaca sheet...');
+    try {
+      const result = await gasPost('importKasLama', { dryRun: true });
+      previewData  = result.preview || [];
+      renderStats(result.stats);
+      renderPreview(previewData);
+      document.getElementById('stats-section').style.display = 'block';
+    } catch(err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Baca Sheet & Preview');
+    }
+  }
+
+  function renderStats(stats) {
+    document.getElementById('st-total').textContent     = stats.total || 0;
+    document.getElementById('st-ready').textContent     = stats.toImport || 0;
+    document.getElementById('st-unmatched').textContent = stats.unmatched || 0;
+    document.getElementById('st-duplicate').textContent = stats.duplicate || 0;
+    document.getElementById('import-count').textContent = stats.toImport || 0;
+
+    const execBtn = document.getElementById('btn-execute');
+    execBtn.style.display = (stats.toImport || 0) > 0 ? '' : 'none';
+
+    const unmatchedWarn = document.getElementById('unmatched-warning');
+    if ((stats.unmatched || 0) > 0) {
+      unmatchedWarn.style.display = 'block';
+      unmatchedWarn.innerHTML = `
+        <strong>${stats.unmatched} nama tidak cocok</strong> dan tidak akan diimport.
+        Nama-nama ini mungkin berbeda penulisannya antara sheet dan database.
+        Kamu bisa import manual untuk data ini setelah import selesai.`;
+    } else {
+      unmatchedWarn.style.display = 'none';
+    }
+  }
+
+  function filterPreview() {
+    const f = document.getElementById('preview-filter').value;
+    const filtered = f ? previewData.filter(r => r.status === f) : previewData;
+    renderPreviewTable(filtered);
+  }
+
+  function renderPreview(data) {
+    renderPreviewTable(data);
+  }
+
+  function renderPreviewTable(data) {
+    const tbody = document.getElementById('preview-table');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7"
+        style="text-align:center;padding:24px;color:#aaa">
+        Tidak ada data</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(r => `
+      <tr>
+        <td style="font-size:12px;color:#888">#${r.row}</td>
+        <td style="font-size:13px;font-weight:500">${r.name}</td>
+        <td style="font-size:13px">
+          ${r.matchedName
+            ? `<span style="color:#2e7d32">${r.matchedName}</span>
+               <div style="font-size:11px;color:#888">${r.matchedEmail||''}</div>`
+            : '<span style="color:#c62828">—</span>'}
+        </td>
+        <td style="font-size:13px">${r.bulan}</td>
+        <td style="font-size:13px;font-weight:600">${formatRupiah(r.amount)}</td>
+        <td>
+          <span class="status-badge status-${r.status}">
+            ${{ready:'Siap',duplicate:'Skip',unmatched:'Tidak cocok',error:'Error'}[r.status]||r.status}
+          </span>
+        </td>
+        <td style="font-size:12px;color:#888">${r.note||''}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function handleExecute() {
+    const readyCount = previewData.filter(r => r.status === 'ready').length;
+    showModal(
+      'Konfirmasi Import',
+      `Kamu akan mengimport <strong>${readyCount} data kas</strong> dengan status Confirmed. Lanjutkan?`,
+      async () => {
+        const btn = document.getElementById('btn-execute');
+        setLoading(btn, true, 'Mengimport...');
+        try {
+          const result = await gasPost('importKasLama', { dryRun: false });
+          showToast(
+            `Import selesai! ${result.stats?.toImport||0} data berhasil diimport.`,
+            'success'
+          );
+          // Refresh preview
+          await handlePreview();
+        } catch(err) {
+          showToast('Import gagal: ' + err.message, 'error');
+        } finally {
+          setLoading(btn, false, `Import Sekarang`);
+        }
+      },
+      'Ya, Import Sekarang'
+    );
+  }
+
+  async function gasPost(action, payload) {
+    const res = await fetch(APP_CONFIG.GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+  init();
+</script>
+</body>
+</html>
