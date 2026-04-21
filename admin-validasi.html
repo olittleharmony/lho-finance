@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Validasi — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .proof-thumb { width:80px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid #e0e0e0; }
+    .review-panel { background:#f9f9f9;border-radius:8px;padding:14px;margin-top:10px;border:1px solid #e0e0e0; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Validasi Transaksi</h1>
+        <p>Konfirmasi atau tolak pembayaran dan reimburse member</p>
+      </div>
+      <span id="pending-badge" style="background:#c62828;color:#fff;border-radius:20px;padding:4px 14px;font-size:14px;font-weight:600;display:none">0 pending</span>
+    </div>
+
+    <!-- Filter -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>Tipe</label>
+          <select id="filter-type" onchange="applyFilter()">
+            <option value="">Semua</option>
+            <option value="kas">Kas Bulanan</option>
+            <option value="reimburse">Reimburse</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select id="filter-status" onchange="applyFilter()">
+            <option value="pending">Menunggu (Pending)</option>
+            <option value="">Semua Status</option>
+            <option value="confirmed">Dikonfirmasi</option>
+            <option value="rejected">Ditolak</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Periode (Kas)</label>
+          <input type="month" id="filter-period" onchange="applyFilter()">
+        </div>
+        <div class="form-group">
+          <label>Cari member</label>
+          <input type="text" id="filter-search" placeholder="Nama member..." oninput="applyFilter()">
+        </div>
+      </div>
+    </div>
+
+    <!-- List kartu transaksi -->
+    <div id="payment-list">
+      <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal reject -->
+<div id="reject-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;max-width:440px;width:100%">
+    <h3 style="margin-bottom:14px;color:#c62828">Tolak Transaksi</h3>
+    <p style="font-size:14px;margin-bottom:14px" id="reject-desc"></p>
+    <div class="form-group">
+      <label>Alasan penolakan <span style="color:#c62828">*</span></label>
+      <textarea id="reject-notes" placeholder="Jelaskan alasan penolakan agar member bisa submit ulang..." rows="3"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeRejectModal()">Batal</button>
+      <button class="btn btn-danger" id="btn-confirm-reject" onclick="confirmReject()">Tolak Transaksi</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/gas.js"></script>
+<script>
+  let profile = null;
+  let allPayments = [];
+  let rejectTarget = null;
+
+  async function init() {
+    profile = await requireAuth('admin');
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'admin-validasi');
+
+    // Cek URL param untuk pre-filter
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('filter')) document.getElementById('filter-type').value = params.get('filter');
+
+    await loadPayments();
+  }
+
+  async function loadPayments() {
+    try {
+      allPayments = await getAllPayments({});
+      applyFilter();
+    } catch(err) { showToast(err.message, 'error'); }
+  }
+
+  function applyFilter() {
+    const type   = document.getElementById('filter-type').value;
+    const status = document.getElementById('filter-status').value;
+    const period = document.getElementById('filter-period').value;
+    const search = document.getElementById('filter-search').value.toLowerCase();
+
+    let data = allPayments;
+    if (type)   data = data.filter(p => p.type === type);
+    if (status) data = data.filter(p => p.status === status);
+    if (period) data = data.filter(p => p.period === period);
+    if (search) data = data.filter(p =>
+      (p.profiles?.full_name || '').toLowerCase().includes(search)
+    );
+
+    const pending = allPayments.filter(p => p.status === 'pending').length;
+    const badge = document.getElementById('pending-badge');
+    badge.textContent = `${pending} pending`;
+    badge.style.display = pending > 0 ? 'inline' : 'none';
+
+    renderList(data);
+  }
+
+  function renderList(data) {
+    const el = document.getElementById('payment-list');
+    if (data.length === 0) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Tidak ada transaksi sesuai filter</div></div>`;
+      return;
+    }
+    el.innerHTML = data.map(p => {
+      const member = p.profiles || {};
+      const isImage = p.proof_url && !p.proof_url.includes('.pdf');
+      const isPending = p.status === 'pending';
+
+      return `
+      <div class="card" style="margin-bottom:14px" id="card-${p.id}">
+        <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+
+          <!-- Bukti thumbnail -->
+          <div style="flex-shrink:0">
+            ${p.proof_url
+              ? `<a href="${p.proof_url}" target="_blank">
+                  <img src="${p.proof_url.replace('/view','').replace('drive.google.com/file/d/','drive.google.com/uc?id=').split('/')[0]+'//drive.google.com/uc?id='+p.proof_url.split('/d/')[1]?.split('/')[0]}"
+                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+                    class="proof-thumb" title="Klik untuk lihat bukti">
+                  <div style="display:none;width:80px;height:60px;background:#f0f0f0;border-radius:6px;align-items:center;justify-content:center;font-size:20px;border:1px solid #e0e0e0">
+                    📄
+                  </div>
+                 </a>`
+              : `<div style="width:80px;height:60px;background:#f0f0f0;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;border:1px dashed #ccc">Tidak ada</div>`
+            }
+          </div>
+
+          <!-- Info transaksi -->
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              ${typeBadge(p.type)}
+              ${statusBadge(p.status)}
+            </div>
+            <div style="font-size:16px;font-weight:700;margin:6px 0">
+              ${formatRupiah(p.amount)}
+            </div>
+            <div style="font-size:13px;color:#555">
+              <strong>${member.full_name || '—'}</strong>
+              ${member.division ? `· ${member.division}` : ''}
+            </div>
+            <div style="font-size:13px;color:#888;margin-top:2px">
+              ${p.type === 'kas'
+                ? `Kas ${formatPeriod(p.period)}`
+                : `${p.title} · ${p.category || ''}`}
+            </div>
+            ${p.type === 'reimburse' && p.expense_date
+              ? `<div style="font-size:12px;color:#aaa">Tgl pengeluaran: ${formatDateOnly(p.expense_date)}</div>`
+              : ''}
+            <div style="font-size:12px;color:#aaa;margin-top:2px">Dikirim: ${formatDate(p.created_at)}</div>
+            ${p.notes ? `<div style="font-size:12px;color:#666;margin-top:4px;font-style:italic">"${p.notes}"</div>` : ''}
+            ${p.status !== 'pending' && p.review_notes
+              ? `<div style="font-size:12px;margin-top:6px;padding:6px 10px;border-radius:4px;background:${p.status==='rejected'?'#ffebee':'#e8f5e9'};color:${p.status==='rejected'?'#c62828':'#2e7d32'}">
+                  ${p.status==='rejected'?'Alasan tolak':'Catatan'}: ${p.review_notes}
+                 </div>`
+              : ''}
+          </div>
+
+          <!-- Tombol aksi -->
+          ${isPending ? `
+          <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+            ${p.proof_url
+              ? `<a href="${p.proof_url}" target="_blank" class="btn btn-ghost btn-sm">Lihat Bukti ↗</a>`
+              : ''}
+            <button class="btn btn-success btn-sm" onclick="handleConfirm('${p.id}')">✓ Konfirmasi</button>
+            <button class="btn btn-danger btn-sm" onclick="openRejectModal('${p.id}','${(member.full_name||'').replace(/'/g,"\\'")}','${p.type}')">✕ Tolak</button>
+          </div>` : `
+          <div style="flex-shrink:0">
+            ${p.proof_url ? `<a href="${p.proof_url}" target="_blank" class="btn btn-ghost btn-sm">Lihat Bukti ↗</a>` : ''}
+          </div>`}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function handleConfirm(paymentId) {
+    const btn = event.target;
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const result = await reviewPayment(paymentId, 'confirmed', '');
+
+      // Kirim notifikasi email via GAS
+      const member = result.profiles || {};
+      const notifType = result.type === 'kas' ? 'kas_confirmed' : 'reimburse_approved';
+      try {
+        await sendNotification(notifType, member.email, member.full_name, {
+          period:      result.period,
+          amount:      result.amount,
+          title:       result.title,
+          category:    result.category,
+          confirmedAt: formatDate(result.reviewed_at),
+          reviewedAt:  formatDate(result.reviewed_at),
+          confirmedBy: profile.full_name,
+          reviewedBy:  profile.full_name,
+          appUrl:      APP_CONFIG.APP_URL,
+        });
+      } catch(e) { console.warn('Email gagal:', e.message); }
+
+      showToast('Transaksi berhasil dikonfirmasi. Email notifikasi terkirim.', 'success');
+      await loadPayments();
+    } catch(err) {
+      showToast(err.message, 'error');
+      setLoading(btn, false, '✓ Konfirmasi');
+    }
+  }
+
+  function openRejectModal(paymentId, memberName, type) {
+    rejectTarget = { paymentId, memberName };
+    document.getElementById('reject-desc').textContent =
+      `Kamu akan menolak ${type === 'kas' ? 'pembayaran kas' : 'reimburse'} dari ${memberName}. Member akan mendapat notifikasi email.`;
+    document.getElementById('reject-notes').value = '';
+    document.getElementById('reject-modal').style.display = 'flex';
+  }
+
+  function closeRejectModal() {
+    document.getElementById('reject-modal').style.display = 'none';
+    rejectTarget = null;
+  }
+
+  async function confirmReject() {
+    const notes = document.getElementById('reject-notes').value.trim();
+    if (!notes) { showToast('Alasan penolakan wajib diisi.', 'warning'); return; }
+
+    const btn = document.getElementById('btn-confirm-reject');
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const result = await reviewPayment(rejectTarget.paymentId, 'rejected', notes);
+      const member = result.profiles || {};
+      const notifType = result.type === 'kas' ? 'kas_rejected' : 'reimburse_rejected';
+      try {
+        await sendNotification(notifType, member.email, member.full_name, {
+          period:      result.period,
+          amount:      result.amount,
+          title:       result.title,
+          reviewNotes: notes,
+          appUrl:      APP_CONFIG.APP_URL,
+        });
+      } catch(e) { console.warn('Email gagal:', e.message); }
+
+      showToast('Transaksi ditolak. Email notifikasi terkirim.', 'info');
+      closeRejectModal();
+      await loadPayments();
+    } catch(err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Tolak Transaksi');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
