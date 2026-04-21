@@ -86,23 +86,38 @@
     });
   }
 
-  // Cek jika ada recovery token di URL (user klik magic link dari email)
+  // Cek jika ada recovery/invite token di URL hash
   async function checkRecoverySession() {
-    const sb = getSupabase();
     const hash = window.location.hash;
 
-    // Supabase v2: session dari URL hash
-    const { data: { session } } = await sb.auth.getSession();
-
-    if (session) {
-      // Cek tipe: jika recovery → tampilkan set password
+    // Supabase menaruh token di URL hash setelah redirect
+    // Format: #access_token=...&type=invite  atau  #access_token=...&type=recovery
+    if (hash && hash.includes('access_token')) {
       const params = new URLSearchParams(hash.replace('#', ''));
-      const type = params.get('type');
-      if (type === 'recovery' || type === 'invite') {
-        showView('set-password');
-        return;
+      const type        = params.get('type');
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+
+      if ((type === 'invite' || type === 'recovery') && accessToken) {
+        // Set session manual dari token di URL
+        const { error } = await getSupabase().auth.setSession({
+          access_token:  accessToken,
+          refresh_token: refreshToken || '',
+        });
+
+        // Bersihkan token dari URL agar tidak kelihatan
+        history.replaceState(null, '', window.location.pathname);
+
+        if (!error) {
+          showView('set-password');
+          return;
+        }
       }
-      // Sudah login biasa → redirect sesuai role
+    }
+
+    // Tidak ada token di URL → cek apakah sudah login sebelumnya
+    const { data: { session } } = await getSupabase().auth.getSession();
+    if (session) {
       await redirectByRole();
     }
   }
