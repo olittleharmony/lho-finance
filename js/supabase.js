@@ -182,7 +182,7 @@ async function getPendingCount() {
 async function getAllProfiles() {
   const { data, error } = await getSupabase()
     .from('profiles')
-    .select('*')
+    .select('*, joined_at')
     .order('full_name');
   if (error) throw error;
   return data;
