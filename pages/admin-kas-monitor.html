@@ -161,7 +161,12 @@
     try {
       const year = document.getElementById('filter-year').value;
       const [profiles, payments, setting] = await Promise.all([
-        getAllProfiles(),
+        getSupabase().from('profiles')
+          .select('id, full_name, division, joined_at')
+          .eq('is_active', true)
+          .eq('role', 'member')
+          .order('full_name')
+          .then(r => r.data || []),
         getSupabase().from('payments').select(`
           id, user_id, period, status, amount, reviewed_at,
           profiles!user_id(full_name, division)
@@ -280,9 +285,30 @@
           <tbody>
             ${profiles.map(p => {
               let lunas = 0;
+              // Hitung bulan pertama wajib bayar
+              const joinedAt  = p.joined_at ? new Date(p.joined_at) : null;
+              const joinYear  = joinedAt ? joinedAt.getFullYear() : 2025;
+              const joinMonth = joinedAt ? joinedAt.getMonth() + 1 : 1;
+              let wajibBulan  = 0;
+
               const cells = MONTHS_SHORT.slice(0, maxMonth).map((m, i) => {
-                const period = `${year}-${String(i+1).padStart(2,'0')}`;
-                const status = lookup[`${p.id}::${period}`];
+                const monthNum = i + 1;
+                const period   = `${year}-${String(monthNum).padStart(2,'0')}`;
+                const status   = lookup[`${p.id}::${period}`];
+
+                // Bulan sebelum bergabung → abu-abu
+                const isBeforeJoined = joinedAt &&
+                  (Number(year) < joinYear ||
+                   (Number(year) === joinYear && monthNum < joinMonth));
+
+                if (isBeforeJoined) {
+                  return `<td style="padding:4px">
+                    <div class="kas-cell" style="background:#f0f0f0;color:#ccc"
+                      title="Sebelum bergabung">·</div>
+                  </td>`;
+                }
+
+                wajibBulan++;
                 let cls = 'kas-empty', label = '—';
                 if (status === 'confirmed') { cls='kas-confirmed'; label='✓'; lunas++; }
                 if (status === 'pending')   { cls='kas-pending';   label='⏳'; }
@@ -291,18 +317,23 @@
                   <div class="kas-cell ${cls}" title="${formatPeriod(period)}">${label}</div>
                 </td>`;
               }).join('');
+
               return `
                 <tr style="border-bottom:1px solid #f5f5f5">
                   <td style="padding:8px 12px;font-weight:500;font-size:13px">
                     ${p.full_name}
+                    ${p.joined_at ? `<div style="font-size:11px;color:#aaa">
+                      Bergabung: ${new Date(p.joined_at).toLocaleDateString('id-ID',
+                        {day:'numeric',month:'short',year:'numeric'})}
+                    </div>` : ''}
                   </td>
                   <td style="padding:8px 8px;font-size:12px;color:#888">
                     ${p.division||'—'}
                   </td>
                   ${cells}
                   <td style="padding:8px;text-align:center;font-weight:600;
-                    color:${lunas===maxMonth?'#2e7d32':lunas>0?'#e65100':'#c62828'}">
-                    ${lunas}/${maxMonth}
+                    color:${lunas===wajibBulan&&wajibBulan>0?'#2e7d32':lunas>0?'#e65100':'#c62828'}">
+                    ${lunas}/${wajibBulan}
                   </td>
                 </tr>`;
             }).join('')}
