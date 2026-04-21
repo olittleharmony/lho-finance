@@ -33,9 +33,7 @@
 
         <div class="form-group">
           <label>Tanggal Jatuh Tempo</label>
-          <select id="kas-due-day">
-            ${Array.from({length:28}, (_,i) => `<option value="${i+1}">${i+1}</option>`).join('')}
-          </select>
+          <select id="kas-due-day"></select>
           <div class="form-hint">Tanggal tiap bulan saat kas harus sudah dibayar</div>
         </div>
 
@@ -99,6 +97,15 @@
 <script src="../js/ui.js"></script>
 <script src="../js/gas.js"></script>
 <script>
+  // Populate tanggal jatuh tempo 1-28
+  const dueDaySel = document.getElementById('kas-due-day');
+  for (let i = 1; i <= 28; i++) {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = i;
+    dueDaySel.appendChild(opt);
+  }
+
   async function init() {
     const profile = await requireAuth('admin');
     if (!profile) return;
