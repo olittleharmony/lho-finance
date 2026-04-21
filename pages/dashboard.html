@@ -77,6 +77,28 @@
         <a href="kas.html" class="btn btn-primary">+ Bayar Kas</a>
         <a href="reimburse.html" class="btn btn-gold">+ Ajukan Reimburse</a>
         <a href="riwayat.html" class="btn btn-ghost">Lihat Riwayat Lengkap</a>
+        <button class="btn btn-ghost" onclick="showChangePassword()">🔑 Ganti Password</button>
+      </div>
+    </div>
+
+    <!-- Modal ganti password -->
+    <div id="modal-pw" style="display:none;position:fixed;inset:0;z-index:9998;
+      background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+      <div style="background:#fff;border-radius:12px;padding:24px;max-width:400px;width:100%">
+        <h3 style="margin-bottom:16px">Ganti Password</h3>
+        <div class="form-group">
+          <label>Password Baru</label>
+          <input type="password" id="pw-new" placeholder="Minimal 8 karakter">
+        </div>
+        <div class="form-group">
+          <label>Konfirmasi Password Baru</label>
+          <input type="password" id="pw-confirm" placeholder="Ulangi password baru">
+        </div>
+        <div id="pw-error" style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end">
+          <button class="btn btn-ghost" onclick="document.getElementById('modal-pw').style.display='none'">Batal</button>
+          <button class="btn btn-primary" id="btn-pw-save" onclick="handleChangePassword()">Simpan</button>
+        </div>
       </div>
     </div>
   </div>
@@ -236,6 +258,47 @@
   }
   window.addEventListener('resize', checkGrid);
   checkGrid();
+
+  function showChangePassword() {
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+    document.getElementById('pw-error').style.display = 'none';
+    document.getElementById('modal-pw').style.display = 'flex';
+  }
+
+  async function handleChangePassword() {
+    const pw1   = document.getElementById('pw-new').value;
+    const pw2   = document.getElementById('pw-confirm').value;
+    const errEl = document.getElementById('pw-error');
+    const btn   = document.getElementById('btn-pw-save');
+    errEl.style.display = 'none';
+
+    if (pw1.length < 8) {
+      errEl.textContent = 'Password minimal 8 karakter.';
+      errEl.style.display = 'block'; return;
+    }
+    if (pw1 !== pw2) {
+      errEl.textContent = 'Password tidak sama.';
+      errEl.style.display = 'block'; return;
+    }
+
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      await updatePassword(pw1);
+      document.getElementById('modal-pw').style.display = 'none';
+      showToast('Password berhasil diubah!', 'success');
+    } catch(err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Simpan');
+    }
+  }
+
+  // Tutup modal kalau klik di luar
+  document.getElementById('modal-pw').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
 
   init();
 </script>
