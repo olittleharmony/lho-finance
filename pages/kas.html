@@ -196,12 +196,9 @@
     if (!profile) return;
     document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'kas');
 
-    // Populate tahun (tahun ini - 1 sampai tahun ini + 1)
-    const yearSel = document.getElementById('kas-year');
+    // Populate tahun — mulai dari 2025
+    const yearSel  = document.getElementById('kas-year');
     const thisYear = new Date().getFullYear();
-    //for (let y = thisYear - 1; y <= thisYear + 1; y++) {
-    
-    // ✅ Mulai dari 2025
     for (let y = 2025; y <= thisYear; y++) {
       const opt = document.createElement('option');
       opt.value = y;
@@ -280,18 +277,41 @@
     selectedMonths.clear();
     checkCoverage();
 
+    // Hitung bulan pertama yang boleh dipilih berdasarkan joined_at
+    const joinedAt  = profile.joined_at ? new Date(profile.joined_at) : null;
+    const joinYear  = joinedAt ? joinedAt.getFullYear() : 2025;
+    const joinMonth = joinedAt ? joinedAt.getMonth() + 1 : 1;
+
     grid.innerHTML = MONTHS.map((m, i) => {
-      const period = `${year}-${String(i+1).padStart(2,'0')}`;
+      const monthNum = i + 1;
+      const period   = `${year}-${String(monthNum).padStart(2,'0')}`;
       const isPaid    = paidPeriods.has(period);
       const isPending = pendingPeriods.has(period);
-      let cls = 'month-chip';
-      let title = m;
-      if (isPaid)    { cls += ' paid';     title += ' ✓'; }
-      if (isPending) { cls += ' rejected'; title += ' ⏳'; }
 
+      // Blokir bulan sebelum bergabung
+      const isBeforeJoined = joinedAt &&
+        (year < joinYear || (year === joinYear && monthNum < joinMonth));
+
+      let cls   = 'month-chip';
+      let title = m;
+      let tooltip = '';
+
+      if (isBeforeJoined) {
+        cls    += ' paid'; // style abu-abu sama seperti paid
+        title  += ' —';
+        tooltip = 'Sebelum bergabung';
+      } else if (isPaid) {
+        cls   += ' paid'; title += ' ✓';
+        tooltip = 'Sudah lunas';
+      } else if (isPending) {
+        cls   += ' rejected'; title += ' ⏳';
+        tooltip = 'Menunggu konfirmasi';
+      }
+
+      const disabled = isPaid || isPending || isBeforeJoined;
       return `<button class="${cls}" data-period="${period}"
-        onclick="toggleMonth('${period}', ${isPaid || isPending})"
-        title="${isPaid ? 'Sudah lunas' : isPending ? 'Menunggu konfirmasi' : ''}">
+        onclick="toggleMonth('${period}', ${disabled})"
+        title="${tooltip || period}">
         ${title}
       </button>`;
     }).join('');
