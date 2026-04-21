@@ -144,13 +144,14 @@
               <th>Nama</th>
               <th>Email</th>
               <th>Divisi</th>
+              <th>Bergabung</th>
               <th>Role</th>
               <th>Status</th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody id="member-table">
-            <tr><td colspan="7"
+            <tr><td colspan="8"
               style="text-align:center;padding:24px;color:#aaa">Memuat...</td></tr>
           </tbody>
         </table>
@@ -272,6 +273,12 @@
         <td style="font-weight:500">${m.full_name}</td>
         <td style="font-size:13px;color:#555">${m.email}</td>
         <td style="font-size:13px">${m.division || '—'}</td>
+        <td style="font-size:13px;white-space:nowrap">
+          ${m.joined_at
+            ? new Date(m.joined_at).toLocaleDateString('id-ID',
+                { day:'numeric', month:'short', year:'numeric' })
+            : '<span style="color:#ccc">—</span>'}
+        </td>
         <td>
           <span style="background:${m.role==='admin'?'#e8f5e9':'#e3f2fd'};
             color:${m.role==='admin'?'#2e7d32':'#1565c0'};
