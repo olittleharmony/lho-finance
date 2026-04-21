@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — LHO Finance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">🎼</div>
+      <h1>LHO Finance</h1>
+      <p>Little Harmony Orchestra</p>
+    </div>
+
+    <!-- Form Login -->
+    <div id="view-login">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="email@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div id="login-error" style="color:#c62828;font-size:13px;margin-bottom:14px;display:none"></div>
+      <button class="btn btn-primary btn-block" id="btn-login" onclick="handleLogin()">
+        Masuk
+      </button>
+      <p style="text-align:center;margin-top:16px">
+        <a href="#" onclick="showView('forgot')" style="font-size:13px;color:#1565c0">Lupa password?</a>
+      </p>
+    </div>
+
+    <!-- Form Lupa Password -->
+    <div id="view-forgot" style="display:none">
+      <p style="margin-bottom:16px;font-size:14px">
+        Masukkan email kamu. Link reset password akan dikirimkan.
+      </p>
+      <div class="form-group">
+        <label for="reset-email">Email</label>
+        <input type="email" id="reset-email" placeholder="email@example.com">
+      </div>
+      <div id="reset-msg" style="font-size:13px;margin-bottom:14px;display:none"></div>
+      <button class="btn btn-primary btn-block" id="btn-reset" onclick="handleResetPassword()">
+        Kirim Link Reset
+      </button>
+      <p style="text-align:center;margin-top:16px">
+        <a href="#" onclick="showView('login')" style="font-size:13px;color:#1565c0">← Kembali ke login</a>
+      </p>
+    </div>
+
+    <!-- Form Set Password Baru (setelah klik magic link) -->
+    <div id="view-set-password" style="display:none">
+      <p style="margin-bottom:16px;font-size:14px;color:#2e7d32;font-weight:500">
+        ✓ Identitas terverifikasi. Buat password baru untuk akun kamu.
+      </p>
+      <div class="form-group">
+        <label for="new-pw">Password Baru</label>
+        <input type="password" id="new-pw" placeholder="Minimal 8 karakter">
+      </div>
+      <div class="form-group">
+        <label for="new-pw-confirm">Konfirmasi Password</label>
+        <input type="password" id="new-pw-confirm" placeholder="Ulangi password">
+      </div>
+      <div id="setpw-error" style="color:#c62828;font-size:13px;margin-bottom:14px;display:none"></div>
+      <button class="btn btn-primary btn-block" id="btn-setpw" onclick="handleSetPassword()">
+        Simpan Password
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/ui.js"></script>
+<script>
+  function showView(name) {
+    ['login','forgot','set-password'].forEach(v => {
+      document.getElementById('view-'+v).style.display = v === name ? '' : 'none';
+    });
+  }
+
+  // Cek jika ada recovery token di URL (user klik magic link dari email)
+  async function checkRecoverySession() {
+    const sb = getSupabase();
+    const hash = window.location.hash;
+
+    // Supabase v2: session dari URL hash
+    const { data: { session } } = await sb.auth.getSession();
+
+    if (session) {
+      // Cek tipe: jika recovery → tampilkan set password
+      const params = new URLSearchParams(hash.replace('#', ''));
+      const type = params.get('type');
+      if (type === 'recovery' || type === 'invite') {
+        showView('set-password');
+        return;
+      }
+      // Sudah login biasa → redirect sesuai role
+      await redirectByRole();
+    }
+  }
+
+  async function redirectByRole() {
+    const profile = await getCurrentProfile();
+    if (!profile) return;
+    if (profile.role === 'admin') {
+      window.location.href = 'pages/admin-dashboard.html';
+    } else {
+      window.location.href = 'pages/dashboard.html';
+    }
+  }
+
+  async function handleLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const errEl    = document.getElementById('login-error');
+    const btn      = document.getElementById('btn-login');
+
+    errEl.style.display = 'none';
+    if (!email || !password) {
+      errEl.textContent = 'Email dan password wajib diisi.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    setLoading(btn, true, 'Masuk...');
+    try {
+      await signIn(email, password);
+      await redirectByRole();
+    } catch (err) {
+      errEl.textContent = err.message === 'Invalid login credentials'
+        ? 'Email atau password salah.' : err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Masuk');
+    }
+  }
+
+  async function handleResetPassword() {
+    const email  = document.getElementById('reset-email').value.trim();
+    const msgEl  = document.getElementById('reset-msg');
+    const btn    = document.getElementById('btn-reset');
+
+    msgEl.style.display = 'none';
+    if (!email) { msgEl.style.color='#c62828'; msgEl.textContent='Email wajib diisi.'; msgEl.style.display='block'; return; }
+
+    setLoading(btn, true, 'Mengirim...');
+    try {
+      const { error } = await getSupabase().auth.resetPasswordForEmail(email, {
+        redirectTo: APP_CONFIG.APP_URL + '/index.html',
+      });
+      if (error) throw error;
+      msgEl.style.color = '#2e7d32';
+      msgEl.textContent = 'Link reset password sudah dikirim. Cek inbox kamu.';
+      msgEl.style.display = 'block';
+    } catch (err) {
+      msgEl.style.color = '#c62828';
+      msgEl.textContent = err.message;
+      msgEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Kirim Link Reset');
+    }
+  }
+
+  async function handleSetPassword() {
+    const pw1   = document.getElementById('new-pw').value;
+    const pw2   = document.getElementById('new-pw-confirm').value;
+    const errEl = document.getElementById('setpw-error');
+    const btn   = document.getElementById('btn-setpw');
+
+    errEl.style.display = 'none';
+    if (pw1.length < 8) { errEl.textContent='Password minimal 8 karakter.'; errEl.style.display='block'; return; }
+    if (pw1 !== pw2)    { errEl.textContent='Password tidak sama.'; errEl.style.display='block'; return; }
+
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      await updatePassword(pw1);
+      showToast('Password berhasil disimpan! Redirecting...', 'success');
+      setTimeout(() => redirectByRole(), 1500);
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Simpan Password');
+    }
+  }
+
+  // Enter key support
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const loginView = document.getElementById('view-login');
+      if (loginView.style.display !== 'none') handleLogin();
+    }
+  });
+
+  checkRecoverySession();
+</script>
+</body>
+</html>
