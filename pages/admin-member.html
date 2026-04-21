@@ -50,14 +50,35 @@
       <div class="card-header">
         <h3>Import dari Google Sheets LHO</h3>
         <button class="btn btn-gold btn-sm" id="btn-import" onclick="handleImportFromSheets()">
-          Import Sekarang
+          Import Member Baru
         </button>
       </div>
       <p style="font-size:13px;margin-bottom:0">
-        Baca data dari sheet
-        <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px">1Bgox...</code>
-        dan kirim undangan email ke member yang belum terdaftar.
+        Buat akun baru + kirim email undangan ke member yang belum terdaftar.
+        Member yang sudah ada dilewati.
       </p>
+    </div>
+
+    <!-- Sync data dari Sheets (tanpa email) -->
+    <div class="card" style="margin-bottom:20px;border-left:4px solid #1565c0">
+      <div class="card-header">
+        <h3>Sync Data dari Google Sheets</h3>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="btn-sync-preview"
+            onclick="handleSyncPreview()">
+            Preview Perubahan
+          </button>
+          <button class="btn btn-primary btn-sm" id="btn-sync-execute"
+            onclick="handleSyncExecute()" style="display:none">
+            Terapkan Update
+          </button>
+        </div>
+      </div>
+      <p style="font-size:13px;margin-bottom:0">
+        Update data member yang sudah ada (nama, divisi, no HP, tanggal bergabung)
+        tanpa membuat akun baru atau mengirim email apapun.
+      </p>
+      <div id="sync-preview" style="display:none;margin-top:16px"></div>
     </div>
 
     <!-- Filter + search -->
@@ -416,6 +437,97 @@
     } finally {
       setLoading(btn, false, 'Undang & Simpan');
     }
+  }
+
+  async function handleSyncPreview() {
+    const btn = document.getElementById('btn-sync-preview');
+    setLoading(btn, true, 'Membaca sheet...');
+    try {
+      const result = await gasPost('syncMemberData', { dryRun: true });
+      renderSyncPreview(result);
+    } catch(err) {
+      showToast('Gagal: ' + err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Preview Perubahan');
+    }
+  }
+
+  async function handleSyncExecute() {
+    showModal(
+      'Konfirmasi Sync Data',
+      'Data member akan diupdate sesuai Google Sheets. Tidak ada email yang dikirim. Lanjutkan?',
+      async () => {
+        const btn = document.getElementById('btn-sync-execute');
+        setLoading(btn, true, 'Mengupdate...');
+        try {
+          const result = await gasPost('syncMemberData', { dryRun: false });
+          showToast(
+            `Sync selesai: ${result.stats.updated} diupdate, ` +
+            `${result.stats.skipped} tidak ada perubahan.`, 'success'
+          );
+          document.getElementById('sync-preview').style.display = 'none';
+          document.getElementById('btn-sync-execute').style.display = 'none';
+          await loadMembers();
+        } catch(err) {
+          showToast('Gagal: ' + err.message, 'error');
+        } finally {
+          setLoading(btn, false, 'Terapkan Update');
+        }
+      },
+      'Ya, Update Sekarang'
+    );
+  }
+
+  function renderSyncPreview(result) {
+    const { stats, results } = result;
+    const el = document.getElementById('sync-preview');
+    el.style.display = 'block';
+
+    // Tampilkan tombol execute jika ada yang perlu diupdate
+    document.getElementById('btn-sync-execute').style.display =
+      stats.updated > 0 ? '' : 'none';
+
+    el.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <span style="background:#e8f5e9;color:#2e7d32;padding:5px 12px;
+          border-radius:6px;font-size:13px;font-weight:600">
+          ${stats.updated} akan diupdate
+        </span>
+        <span style="background:#f5f5f5;color:#888;padding:5px 12px;
+          border-radius:6px;font-size:13px">
+          ${stats.skipped} tidak ada perubahan
+        </span>
+        <span style="background:#fff3e0;color:#e65100;padding:5px 12px;
+          border-radius:6px;font-size:13px">
+          ${stats.notFound} belum punya akun
+        </span>
+      </div>
+
+      ${results.updated.length > 0 ? `
+        <div style="margin-bottom:12px">
+          <div style="font-size:13px;font-weight:600;color:#2e7d32;margin-bottom:8px">
+            Akan diupdate:
+          </div>
+          ${results.updated.map(r => `
+            <div style="padding:8px 12px;background:#f1f8f1;border-radius:6px;
+              margin-bottom:4px;font-size:13px">
+              <span style="font-weight:500">${r.fullName}</span>
+              <span style="color:#888"> — ${r.note}</span>
+            </div>`).join('')}
+        </div>` : ''}
+
+      ${results.notFound.length > 0 ? `
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#e65100;margin-bottom:8px">
+            Belum punya akun (gunakan Import untuk buat akun baru):
+          </div>
+          ${results.notFound.map(r => `
+            <div style="padding:8px 12px;background:#fff8e1;border-radius:6px;
+              margin-bottom:4px;font-size:13px">
+              ${r.fullName} — <span style="color:#888">${r.email}</span>
+            </div>`).join('')}
+        </div>` : ''}
+    `;
   }
 
   async function handleImportFromSheets() {
