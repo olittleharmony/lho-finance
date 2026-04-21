@@ -6,6 +6,31 @@
   <title>Kelola Member — LHO Finance</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .cb { width:16px; height:16px; cursor:pointer; accent-color:#1a1a2e; }
+    .bulk-action-bar {
+      display:none; align-items:center; gap:12px; flex-wrap:wrap;
+      padding:12px 16px; background:#1a1a2e; border-radius:8px;
+      margin-bottom:16px; color:#fff; font-size:13px;
+    }
+    .bulk-action-bar.visible { display:flex; }
+    .bulk-action-bar select {
+      padding:6px 10px; border-radius:6px; font-size:13px;
+      font-family:inherit; border:none; background:#fff; color:#1a1a2e;
+    }
+    .bulk-action-bar .btn-apply {
+      padding:7px 16px; background:#c9a84c; color:#1a1a2e;
+      border:none; border-radius:6px; font-size:13px; font-weight:600;
+      font-family:inherit; cursor:pointer; transition:background .15s;
+    }
+    .bulk-action-bar .btn-apply:hover { background:#e8c97a; }
+    .bulk-action-bar .btn-cancel {
+      padding:7px 12px; background:transparent; color:rgba(255,255,255,0.6);
+      border:1px solid rgba(255,255,255,0.2); border-radius:6px;
+      font-size:13px; font-family:inherit; cursor:pointer;
+    }
+    .row-selected { background:#f0f4ff !important; }
+  </style>
 </head>
 <body>
 <div class="page-wrapper">
@@ -29,9 +54,9 @@
         </button>
       </div>
       <p style="font-size:13px;margin-bottom:0">
-        Baca data dari sheet <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px">1Bgox...</code>
+        Baca data dari sheet
+        <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px">1Bgox...</code>
         dan kirim undangan email ke member yang belum terdaftar.
-        Member yang sudah terdaftar dilewati secara otomatis.
       </p>
     </div>
 
@@ -40,7 +65,8 @@
       <div class="filter-bar">
         <div class="form-group">
           <label>Cari</label>
-          <input type="text" id="search" placeholder="Nama atau email..." oninput="filterMembers()">
+          <input type="text" id="search" placeholder="Nama atau email..."
+            oninput="filterMembers()">
         </div>
         <div class="form-group">
           <label>Divisi</label>
@@ -56,14 +82,44 @@
             <option value="false">Non-aktif</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="filter-role" onchange="filterMembers()">
+            <option value="">Semua</option>
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
       </div>
 
-      <div id="member-count" style="font-size:13px;color:#888;margin-bottom:14px"></div>
+      <!-- Bulk action bar -->
+      <div class="bulk-action-bar" id="bulk-bar">
+        <span id="selected-count">0 dipilih</span>
+        <select id="bulk-action">
+          <option value="">— Pilih aksi —</option>
+          <option value="deactivate">Non-aktifkan akun</option>
+          <option value="activate">Aktifkan akun</option>
+          <option value="set-member">Jadikan Member</option>
+          <option value="set-admin">Jadikan Admin</option>
+        </select>
+        <button class="btn-apply" onclick="applyBulkAction()">Terapkan</button>
+        <button class="btn-cancel" onclick="clearSelection()">Batal</button>
+        <span style="margin-left:auto;font-size:12px;color:rgba(255,255,255,0.5)">
+          Shift+klik untuk pilih rentang
+        </span>
+      </div>
+
+      <div id="member-count"
+        style="font-size:13px;color:#888;margin-bottom:14px"></div>
 
       <div class="table-wrapper">
         <table>
           <thead>
             <tr>
+              <th style="width:40px">
+                <input type="checkbox" class="cb" id="cb-all"
+                  onchange="toggleSelectAll(this.checked)">
+              </th>
               <th>Nama</th>
               <th>Email</th>
               <th>Divisi</th>
@@ -73,7 +129,8 @@
             </tr>
           </thead>
           <tbody id="member-table">
-            <tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Memuat...</td></tr>
+            <tr><td colspan="7"
+              style="text-align:center;padding:24px;color:#aaa">Memuat...</td></tr>
           </tbody>
         </table>
       </div>
@@ -81,10 +138,12 @@
   </div>
 </div>
 
-<!-- Modal tambah/edit member -->
-<div id="member-modal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
-  <div style="background:#fff;border-radius:12px;padding:24px;max-width:460px;width:100%;max-height:90vh;overflow-y:auto">
-    <h3 id="modal-title" style="margin-bottom:18px">Tambah Member Baru</h3>
+<!-- Modal tambah member -->
+<div id="member-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;
+    max-width:460px;width:100%;max-height:90vh;overflow-y:auto">
+    <h3 style="margin-bottom:18px">Tambah Member Baru</h3>
     <div class="form-group">
       <label>Nama Lengkap <span style="color:#c62828">*</span></label>
       <input type="text" id="m-name" placeholder="Nama lengkap">
@@ -95,7 +154,7 @@
     </div>
     <div class="form-group">
       <label>Divisi</label>
-      <input type="text" id="m-division" placeholder="Contoh: Violin, Cello, Flute...">
+      <input type="text" id="m-division" placeholder="Violin, Cello, Flute...">
     </div>
     <div class="form-group">
       <label>No. HP</label>
@@ -108,10 +167,13 @@
         <option value="admin">Admin</option>
       </select>
     </div>
-    <div id="modal-error" style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div id="modal-error"
+      style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-ghost" onclick="closeModal()">Batal</button>
-      <button class="btn btn-primary" id="btn-save-member" onclick="saveMember()">Undang & Simpan</button>
+      <button class="btn btn-primary" id="btn-save-member" onclick="saveMember()">
+        Undang & Simpan
+      </button>
     </div>
   </div>
 </div>
@@ -122,20 +184,23 @@
 <script src="../js/ui.js"></script>
 <script src="../js/gas.js"></script>
 <script>
-  let profile = null;
-  let allMembers = [];
+  let profile     = null;
+  let allMembers  = [];
+  let filteredMembers = [];
+  let selectedIds = new Set();
+  let lastClickedIdx = -1;
 
   async function init() {
     profile = await requireAuth('admin');
     if (!profile) return;
-    document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'admin-member');
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-member');
     await loadMembers();
   }
 
   async function loadMembers() {
     try {
       allMembers = await getAllProfiles();
-      // Populate divisi filter
       const divisi = [...new Set(allMembers.map(m => m.division).filter(Boolean))].sort();
       const sel = document.getElementById('filter-division');
       sel.innerHTML = '<option value="">Semua Divisi</option>' +
@@ -148,27 +213,41 @@
     const search = document.getElementById('search').value.toLowerCase();
     const div    = document.getElementById('filter-division').value;
     const active = document.getElementById('filter-active').value;
+    const role   = document.getElementById('filter-role').value;
 
-    let data = allMembers;
-    if (search) data = data.filter(m =>
-      m.full_name?.toLowerCase().includes(search) || m.email?.toLowerCase().includes(search)
+    filteredMembers = allMembers;
+    if (search) filteredMembers = filteredMembers.filter(m =>
+      m.full_name?.toLowerCase().includes(search) ||
+      m.email?.toLowerCase().includes(search)
     );
-    if (div)    data = data.filter(m => m.division === div);
-    if (active) data = data.filter(m => String(m.is_active) === active);
+    if (div)    filteredMembers = filteredMembers.filter(m => m.division === div);
+    if (active) filteredMembers = filteredMembers.filter(m =>
+      String(m.is_active) === active);
+    if (role)   filteredMembers = filteredMembers.filter(m => m.role === role);
 
     document.getElementById('member-count').textContent =
-      `Menampilkan ${data.length} dari ${allMembers.length} member`;
-    renderTable(data);
+      `Menampilkan ${filteredMembers.length} dari ${allMembers.length} member`;
+    selectedIds.clear();
+    updateBulkBar();
+    renderTable();
   }
 
-  function renderTable(data) {
+  function renderTable() {
     const tbody = document.getElementById('member-table');
-    if (data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Tidak ada member</td></tr>`;
+    if (filteredMembers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7"
+        style="text-align:center;padding:24px;color:#aaa">
+        Tidak ada member</td></tr>`;
       return;
     }
-    tbody.innerHTML = data.map(m => `
-      <tr style="opacity:${m.is_active ? 1 : 0.5}">
+    tbody.innerHTML = filteredMembers.map((m, idx) => `
+      <tr id="row-${m.id}" class="${selectedIds.has(m.id) ? 'row-selected' : ''}"
+        style="opacity:${m.is_active ? 1 : 0.55}">
+        <td>
+          <input type="checkbox" class="cb" data-id="${m.id}" data-idx="${idx}"
+            ${selectedIds.has(m.id) ? 'checked' : ''}
+            onchange="handleRowCheck(this, ${idx}, event)">
+        </td>
         <td style="font-weight:500">${m.full_name}</td>
         <td style="font-size:13px;color:#555">${m.email}</td>
         <td style="font-size:13px">${m.division || '—'}</td>
@@ -187,20 +266,123 @@
           </span>
         </td>
         <td>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-ghost btn-sm" onclick="toggleActive('${m.id}', ${m.is_active})">
-              ${m.is_active ? 'Non-aktifkan' : 'Aktifkan'}
-            </button>
-          </div>
+          <button class="btn btn-ghost btn-sm"
+            onclick="toggleActive('${m.id}', ${m.is_active})">
+            ${m.is_active ? 'Non-aktifkan' : 'Aktifkan'}
+          </button>
         </td>
       </tr>
     `).join('');
   }
 
+  // ---- Checkbox logic ----
+  function handleRowCheck(cb, idx, event) {
+    const id = cb.dataset.id;
+    if (event.shiftKey && lastClickedIdx >= 0) {
+      const from = Math.min(lastClickedIdx, idx);
+      const to   = Math.max(lastClickedIdx, idx);
+      for (let i = from; i <= to; i++) {
+        const m = filteredMembers[i];
+        if (cb.checked) selectedIds.add(m.id);
+        else            selectedIds.delete(m.id);
+      }
+    } else {
+      if (cb.checked) selectedIds.add(id);
+      else            selectedIds.delete(id);
+    }
+    lastClickedIdx = idx;
+    updateBulkBar();
+    renderTable();
+  }
+
+  function toggleSelectAll(checked) {
+    if (checked) filteredMembers.forEach(m => selectedIds.add(m.id));
+    else         selectedIds.clear();
+    updateBulkBar();
+    renderTable();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    document.getElementById('cb-all').checked = false;
+    updateBulkBar();
+    renderTable();
+  }
+
+  function updateBulkBar() {
+    const bar = document.getElementById('bulk-bar');
+    const n   = selectedIds.size;
+    bar.classList.toggle('visible', n > 0);
+    document.getElementById('selected-count').textContent = `${n} member dipilih`;
+    document.getElementById('cb-all').indeterminate =
+      n > 0 && n < filteredMembers.length;
+    document.getElementById('cb-all').checked =
+      n > 0 && n === filteredMembers.length;
+  }
+
+  async function applyBulkAction() {
+    const action = document.getElementById('bulk-action').value;
+    if (!action) { showToast('Pilih aksi dulu.', 'warning'); return; }
+    if (selectedIds.size === 0) { showToast('Pilih member dulu.', 'warning'); return; }
+
+    const labels = {
+      deactivate: 'menonaktifkan',
+      activate:   'mengaktifkan',
+      'set-member': 'menjadikan member',
+      'set-admin':  'menjadikan admin',
+    };
+
+    showModal(
+      'Konfirmasi Aksi Massal',
+      `Kamu akan <strong>${labels[action]}</strong> <strong>${selectedIds.size} member</strong>. Lanjutkan?`,
+      async () => {
+        const ids = [...selectedIds];
+        let update = {};
+        if (action === 'deactivate')  update = { is_active: false };
+        if (action === 'activate')    update = { is_active: true };
+        if (action === 'set-member')  update = { role: 'member' };
+        if (action === 'set-admin')   update = { role: 'admin' };
+
+        try {
+          const { error } = await getSupabase()
+            .from('profiles')
+            .update(update)
+            .in('id', ids);
+          if (error) throw error;
+          showToast(`${ids.length} member berhasil diperbarui.`, 'success');
+          clearSelection();
+          await loadMembers();
+        } catch(err) { showToast(err.message, 'error'); }
+      },
+      'Ya, Terapkan'
+    );
+  }
+
+  // ---- Single toggle ----
+  async function toggleActive(userId, currentStatus) {
+    showModal(
+      `${currentStatus ? 'Non-aktifkan' : 'Aktifkan'} Member`,
+      `Yakin ingin ${currentStatus ? 'menonaktifkan' : 'mengaktifkan'} member ini?`,
+      async () => {
+        try {
+          const { error } = await getSupabase()
+            .from('profiles')
+            .update({ is_active: !currentStatus })
+            .eq('id', userId);
+          if (error) throw error;
+          showToast(`Member berhasil ${currentStatus ? 'dinonaktifkan' : 'diaktifkan'}.`, 'success');
+          await loadMembers();
+        } catch(err) { showToast(err.message, 'error'); }
+      },
+      currentStatus ? 'Non-aktifkan' : 'Aktifkan'
+    );
+  }
+
+  // ---- Modal tambah ----
   function showAddModal() {
-    ['m-name','m-email','m-division','m-phone'].forEach(id => document.getElementById(id).value = '');
+    ['m-name','m-email','m-division','m-phone'].forEach(id =>
+      document.getElementById(id).value = '');
     document.getElementById('m-role').value = 'member';
-    document.getElementById('modal-title').textContent = 'Tambah Member Baru';
     document.getElementById('modal-error').style.display = 'none';
     document.getElementById('member-modal').style.display = 'flex';
   }
@@ -236,32 +418,17 @@
     }
   }
 
-  async function toggleActive(userId, currentStatus) {
-    const action = currentStatus ? 'menonaktifkan' : 'mengaktifkan';
-    showModal(
-      `${currentStatus ? 'Non-aktifkan' : 'Aktifkan'} Member`,
-      `Yakin ingin ${action} member ini? ${currentStatus ? 'Member tidak bisa login setelah dinonaktifkan.' : ''}`,
-      async () => {
-        try {
-          const { error } = await getSupabase()
-            .from('profiles')
-            .update({ is_active: !currentStatus })
-            .eq('id', userId);
-          if (error) throw error;
-          showToast(`Member berhasil di${action}kan.`, 'success');
-          await loadMembers();
-        } catch(err) { showToast(err.message, 'error'); }
-      },
-      currentStatus ? 'Non-aktifkan' : 'Aktifkan'
-    );
-  }
-
   async function handleImportFromSheets() {
     const btn = document.getElementById('btn-import');
     setLoading(btn, true, 'Membaca sheet...');
     try {
-      const result = await gasPost('importMembers', { members: [] });
-      showToast(`Import selesai: ${result.success?.length || 0} berhasil, ${result.failed?.length || 0} gagal.`, 'success');
+      const result = await gasPost('importMembers', {});
+      showToast(
+        `Import selesai: ${result.success?.length||0} berhasil, ` +
+        `${result.skipped?.length||0} sudah ada, ` +
+        `${result.failed?.length||0} gagal.`,
+        'success'
+      );
       await loadMembers();
     } catch(err) {
       showToast('Import gagal: ' + err.message, 'error');
