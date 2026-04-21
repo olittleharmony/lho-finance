@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bayar Kas — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Pembayaran Kas</h1>
+        <p>Submit pembayaran kas bulanan kamu</p>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="kas-grid">
+
+      <!-- Form submit -->
+      <div class="card">
+        <div class="card-header"><h3>Form Pembayaran Baru</h3></div>
+
+        <div class="form-group">
+          <label>Periode</label>
+          <input type="month" id="kas-period">
+          <div class="form-hint">Pilih bulan yang ingin dibayar</div>
+        </div>
+
+        <div class="form-group">
+          <label>Nominal Kas</label>
+          <input type="text" id="kas-amount" readonly>
+          <div class="form-hint">Nominal ditetapkan oleh admin</div>
+        </div>
+
+        <div class="form-group">
+          <label>Bukti Pembayaran <span style="color:#c62828">*</span></label>
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('kas-file').click()">
+            <input type="file" id="kas-file" accept="image/*,.pdf" onchange="handleFileSelect(this)">
+            <div class="upload-icon">📎</div>
+            <div class="upload-text">Klik atau drag file ke sini</div>
+            <div class="upload-sub">JPG, PNG, WEBP, PDF · Maks 10MB</div>
+          </div>
+          <div id="file-preview" style="display:none" class="upload-preview">
+            <span id="file-icon">📄</span>
+            <div style="flex:1">
+              <div id="file-name" style="font-weight:500"></div>
+              <div id="file-size" style="font-size:12px;color:#888"></div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="clearFile()">✕</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Catatan (opsional)</label>
+          <textarea id="kas-notes" placeholder="Contoh: Transfer via BCA 12 Apr"></textarea>
+        </div>
+
+        <div id="submit-error" style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+
+        <button class="btn btn-primary btn-block" id="btn-submit" onclick="handleSubmit()">
+          Kirim Pembayaran
+        </button>
+      </div>
+
+      <!-- Riwayat kas -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Riwayat Kas Kamu</h3>
+        </div>
+        <div id="kas-history">
+          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/gas.js"></script>
+<script>
+  let profile = null;
+  let selectedFile = null;
+  let kasAmount = 0;
+
+  async function init() {
+    profile = await requireAuth();
+    if (!profile) return;
+
+    document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'kas');
+
+    // Set periode default ke bulan ini
+    document.getElementById('kas-period').value = currentPeriod();
+
+    // Ambil nominal kas dari settings
+    try {
+      const setting = await getKasSetting();
+      kasAmount = Number(setting.kas_amount || 0);
+      document.getElementById('kas-amount').value = formatRupiah(kasAmount);
+    } catch (e) { console.error(e); }
+
+    // Drag & drop support
+    const zone = document.getElementById('upload-zone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) handleFileSelect({ files: e.dataTransfer.files });
+    });
+
+    await loadHistory();
+  }
+
+  function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    selectedFile = file;
+
+    const isImage = file.type.startsWith('image/');
+    document.getElementById('file-icon').textContent = isImage ? '🖼️' : '📄';
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-size').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    document.getElementById('file-preview').style.display = 'flex';
+    document.getElementById('upload-zone').style.display = 'none';
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    document.getElementById('kas-file').value = '';
+    document.getElementById('file-preview').style.display = 'none';
+    document.getElementById('upload-zone').style.display = 'block';
+  }
+
+  async function handleSubmit() {
+    const period = document.getElementById('kas-period').value;
+    const notes  = document.getElementById('kas-notes').value.trim();
+    const errEl  = document.getElementById('submit-error');
+    const btn    = document.getElementById('btn-submit');
+    errEl.style.display = 'none';
+
+    if (!period) { errEl.textContent = 'Periode wajib dipilih.'; errEl.style.display='block'; return; }
+    if (!selectedFile) { errEl.textContent = 'Bukti pembayaran wajib diunggah.'; errEl.style.display='block'; return; }
+
+    setLoading(btn, true, 'Mengunggah bukti...');
+    try {
+      // 1. Upload file ke Drive via GAS
+      const uploaded = await uploadBukti(selectedFile, 'kas', profile.full_name);
+
+      // 2. Simpan ke Supabase
+      btn.innerHTML = '<span class="spinner"></span>Menyimpan...';
+      const payment = await submitPayment({
+        type:          'kas',
+        period:        period,
+        amount:        kasAmount,
+        notes:         notes || null,
+        proof_url:     uploaded.url,
+        proof_filename: uploaded.fileName,
+      });
+
+      showToast('Pembayaran berhasil dikirim! Menunggu konfirmasi admin.', 'success');
+      clearFile();
+      document.getElementById('kas-notes').value = '';
+      await loadHistory();
+
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Kirim Pembayaran');
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const payments = await getMyPayments('kas');
+      const el = document.getElementById('kas-history');
+
+      if (payments.length === 0) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Belum ada riwayat pembayaran kas</div></div>`;
+        return;
+      }
+
+      el.innerHTML = payments.map(p => `
+        <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div style="font-weight:600">${formatPeriod(p.period)}</div>
+            ${statusBadge(p.status)}
+          </div>
+          <div style="font-size:13px;color:#555">${formatRupiah(p.amount)}</div>
+          <div style="font-size:12px;color:#888;margin-top:2px">Dikirim: ${formatDate(p.created_at)}</div>
+          ${p.status === 'rejected' && p.review_notes ? `
+            <div style="font-size:12px;color:#c62828;margin-top:4px;padding:6px 10px;background:#ffebee;border-radius:4px">
+              Ditolak: ${p.review_notes}
+            </div>` : ''}
+          ${p.proof_url ? `<a href="${p.proof_url}" target="_blank" style="font-size:12px;color:#1565c0;margin-top:4px;display:inline-block">Lihat bukti ↗</a>` : ''}
+        </div>
+      `).join('');
+    } catch (err) { console.error(err); }
+  }
+
+  function checkGrid() {
+    const grid = document.getElementById('kas-grid');
+    if (grid) grid.style.gridTemplateColumns = window.innerWidth < 700 ? '1fr' : '1fr 1fr';
+  }
+  window.addEventListener('resize', checkGrid);
+  checkGrid();
+  init();
+</script>
+</body>
+</html>
