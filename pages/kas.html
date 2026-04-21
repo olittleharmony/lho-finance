@@ -199,7 +199,10 @@
     // Populate tahun (tahun ini - 1 sampai tahun ini + 1)
     const yearSel = document.getElementById('kas-year');
     const thisYear = new Date().getFullYear();
-    for (let y = thisYear - 1; y <= thisYear + 1; y++) {
+    //for (let y = thisYear - 1; y <= thisYear + 1; y++) {
+    
+    // ✅ Mulai dari 2025
+    for (let y = 2025; y <= thisYear; y++) {
       const opt = document.createElement('option');
       opt.value = y;
       opt.textContent = y;
