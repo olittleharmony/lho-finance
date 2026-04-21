@@ -125,6 +125,23 @@
   async function redirectByRole() {
     const profile = await getCurrentProfile();
     if (!profile) return;
+
+    // Cek apakah ini login pertama (belum pernah ganti password)
+    // Kita deteksi dari updated_at == created_at di auth.users
+    const { data: { user } } = await getSupabase().auth.getUser();
+    const isFirstLogin = user && (
+      Math.abs(new Date(user.updated_at) - new Date(user.created_at)) < 5000
+    );
+
+    if (isFirstLogin) {
+      showView('set-password');
+      // Tampilkan pesan khusus first login
+      document.querySelector('#view-set-password p').textContent =
+        'Selamat datang! Buat password pribadi kamu untuk mengganti password sementara.';
+      document.querySelector('#view-set-password p').style.color = '#1565c0';
+      return;
+    }
+
     if (profile.role === 'admin') {
       window.location.href = 'pages/admin-dashboard.html';
     } else {
