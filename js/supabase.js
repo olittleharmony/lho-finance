@@ -47,6 +47,15 @@ async function updatePassword(newPassword) {
   if (error) throw error;
 }
 
+// ============================================================
+// Akun operasional khusus — hanya akses admin, bukan member area
+// ============================================================
+const OPS_ADMIN_EMAIL = 'olittleharmony@gmail.com';
+
+function isOpsAdmin(profile) {
+  return profile?.email?.toLowerCase() === OPS_ADMIN_EMAIL.toLowerCase();
+}
+
 // ---- Guard: redirect ke login jika belum login ----
 async function requireAuth(requiredRole = null) {
   const profile = await getCurrentProfile();
@@ -58,6 +67,19 @@ async function requireAuth(requiredRole = null) {
     await signOut();
     return null;
   }
+
+  // Akun ops admin → hanya boleh akses halaman admin
+  if (isOpsAdmin(profile)) {
+    const isAdminPage = window.location.pathname.includes('admin-');
+    if (!isAdminPage) {
+      // Kalau coba akses halaman member → redirect ke admin dashboard
+      window.location.href =
+        'https://olittleharmony.github.io/lho-finance/pages/admin-dashboard.html';
+      return null;
+    }
+    return profile;
+  }
+
   if (requiredRole && profile.role !== requiredRole) {
     window.location.href = 'https://olittleharmony.github.io/member/hub.html';
     return null;
