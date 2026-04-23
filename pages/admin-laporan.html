@@ -17,7 +17,20 @@
         <h1>Laporan Keuangan</h1>
         <p>Ringkasan saldo, laporan bulanan, dan rekap per kategori</p>
       </div>
-      <button class="btn btn-gold" onclick="handleExport()">↑ Export ke Sheets</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="sync-target" style="padding:8px 12px;border-radius:6px;
+          font-size:13px;font-family:inherit;border:1.5px solid #e0e0e0">
+          <option value="all">Semua Data</option>
+          <option value="kas">Kas Member</option>
+          <option value="donasi">Donasi</option>
+          <option value="reimburse">Reimburse</option>
+          <option value="transaksi">Transaksi Manual</option>
+          <option value="laporan">Laba Rugi & Arus Kas</option>
+        </select>
+        <button class="btn btn-gold" id="btn-export" onclick="handleExport()">
+          ↑ Export ke Sheets
+        </button>
+      </div>
     </div>
 
     <!-- Saldo real-time -->
@@ -294,11 +307,28 @@
   }
 
   async function handleExport() {
-    const btn = event.target;
-    setLoading(btn, true, 'Meng-export...');
+    const btn    = document.getElementById('btn-export');
+    const target = document.getElementById('sync-target').value;
+    const labels = {
+      all:       'Semua Data',
+      kas:       'Kas Member',
+      donasi:    'Donasi',
+      reimburse: 'Reimburse',
+      transaksi: 'Transaksi Manual',
+      laporan:   'Laba Rugi & Arus Kas',
+    };
+    setLoading(btn, true, `Meng-export ${labels[target]}...`);
     try {
-      await triggerSyncSheets('full');
-      showToast('Berhasil di-export ke Google Sheets!', 'success');
+      const res = await fetch(APP_CONFIG.GAS_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({ action: 'syncToSheets', target }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showToast(
+        `${labels[target]} berhasil di-export ke Google Sheets!`, 'success'
+      );
     } catch(err) {
       showToast('Export gagal: ' + err.message, 'error');
     } finally {
