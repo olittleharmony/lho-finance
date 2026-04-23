@@ -561,6 +561,8 @@
     const btn = document.getElementById('btn-submit');
     if (btn) btn.disabled = !cb?.checked;
   }
+
+  function handleFileSelect(input) {
     const file = input.files[0];
     if (!file) return;
     selectedFile = file;
