@@ -96,6 +96,36 @@
       <div class="card">
         <div class="card-header"><h3>Form Pembayaran Baru</h3></div>
 
+        <!-- Info rekening pembayaran -->
+        <div id="payment-info" style="display:none;margin-bottom:16px;
+          padding:14px;border-radius:8px;background:#e3f2fd;border:1px solid #90caf9">
+          <div style="font-size:12px;font-weight:600;color:#1565c0;
+            text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">
+            Transfer Pembayaran Kas ke:
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:18px;font-weight:700;color:#1a1a2e;
+                letter-spacing:1px" id="info-account-no">—</div>
+              <div style="font-size:13px;color:#555;margin-top:2px">
+                <span id="info-bank-name" style="font-weight:600"></span>
+                · a.n. <span id="info-account-name"></span>
+              </div>
+            </div>
+            <button onclick="copyRekening()" title="Salin nomor rekening"
+              style="background:#1565c0;color:#fff;border:none;border-radius:6px;
+                padding:6px 12px;font-size:12px;font-family:inherit;cursor:pointer">
+              Salin
+            </button>
+          </div>
+        </div> style="display:none;margin-bottom:16px;
+          padding:14px;border-radius:8px;background:#fff3e0;border:1px solid #ffcc80">
+          <div style="font-size:13px;font-weight:600;color:#e65100;margin-bottom:6px">
+            ⚠ Kamu memiliki tunggakan kas
+          </div>
+          <div id="tunggakan-detail" style="font-size:13px;color:#555"></div>
+        </div>
+
         <!-- Pilih tahun -->
         <div class="form-group">
           <label>Tahun</label>
@@ -228,16 +258,111 @@
 
     await loadHistory();
     renderMonthGrid();
+    await Promise.all([loadTunggakan(), loadPaymentInfo()]);
+  }
+
+  async function loadPaymentInfo() {
+    try {
+      const { data } = await getSupabase()
+        .from('settings')
+        .select('key, value')
+        .in('key', ['payment_bank_name', 'payment_account_no', 'payment_account_name']);
+
+      if (!data || data.length === 0) return;
+
+      const s = {};
+      data.forEach(r => s[r.key] = r.value);
+
+      if (s.payment_account_no) {
+        document.getElementById('info-account-no').textContent   = s.payment_account_no;
+        document.getElementById('info-bank-name').textContent    = s.payment_bank_name || '';
+        document.getElementById('info-account-name').textContent = s.payment_account_name || '';
+        document.getElementById('payment-info').style.display    = 'block';
+      }
+    } catch(err) { console.error(err); }
+  }
+
+  function copyRekening() {
+    const noRek = document.getElementById('info-account-no').textContent;
+    navigator.clipboard.writeText(noRek).then(() => {
+      showToast('Nomor rekening disalin!', 'success');
+    }).catch(() => {
+      // Fallback untuk browser yang tidak support clipboard API
+      const el = document.createElement('textarea');
+      el.value = noRek;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast('Nomor rekening disalin!', 'success');
+    });
+  }
+
+  async function loadTunggakan() {
+    try {
+      const now      = new Date();
+      const thisYear = now.getFullYear();
+      const thisMonth = now.getMonth() + 1;
+
+      // Ambil semua kas confirmed milik member
+      const { data: paid } = await getSupabase()
+        .from('payments')
+        .select('period')
+        .eq('user_id', profile.id)
+        .eq('type', 'kas')
+        .eq('status', 'confirmed');
+
+      const paidSet = new Set((paid || []).map(p => p.period));
+
+      // Hitung tunggakan: dari bulan bergabung sampai bulan lalu
+      const joinedAt  = profile.joined_at ? new Date(profile.joined_at) : new Date('2025-01-01');
+      const joinYear  = joinedAt.getFullYear();
+      const joinMonth = joinedAt.getMonth() + 1;
+
+      const tunggakan = [];
+      for (let y = joinYear; y <= thisYear; y++) {
+        const startM = y === joinYear ? joinMonth : 1;
+        const endM   = y === thisYear ? thisMonth - 1 : 12; // sampai bulan LALU
+        for (let m = startM; m <= endM; m++) {
+          const period = `${y}-${String(m).padStart(2,'0')}`;
+          if (!paidSet.has(period)) tunggakan.push(period);
+        }
+      }
+
+      const infoEl   = document.getElementById('tunggakan-info');
+      const detailEl = document.getElementById('tunggakan-detail');
+
+      if (tunggakan.length === 0) {
+        infoEl.style.display = 'none';
+        return;
+      }
+
+      const totalTunggakan = tunggakan.length * kasPerBulan;
+      infoEl.style.display = 'block';
+      detailEl.innerHTML = `
+        Kamu belum membayar uang kas selama <strong>${tunggakan.length} bulan</strong>
+        sebesar <strong>${formatRupiah(totalTunggakan)}</strong>.<br>
+        <span style="color:#888;font-size:12px">
+          Bulan: ${tunggakan.map(p => formatPeriod(p)).join(', ')}
+        </span>`;
+    } catch(err) { console.error(err); }
   }
 
   async function loadHistory() {
     try {
-      const payments = await getMyPayments('kas');
+      // Ambil kas + donasi sekaligus
+      const { data: payments, error } = await getSupabase()
+        .from('payments')
+        .select('*')
+        .in('type', ['kas', 'donasi'])
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
       paidPeriods.clear();
       pendingPeriods.clear();
       payments.forEach(p => {
-        if (p.status === 'confirmed') paidPeriods.add(p.period);
-        if (p.status === 'pending')   pendingPeriods.add(p.period);
+        if (p.type === 'kas' && p.status === 'confirmed') paidPeriods.add(p.period);
+        if (p.type === 'kas' && p.status === 'pending')   pendingPeriods.add(p.period);
       });
 
       const el = document.getElementById('kas-history');
@@ -248,12 +373,21 @@
         </div>`;
         return;
       }
+
       el.innerHTML = payments.map(p => `
         <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <div style="font-weight:600">${formatPeriod(p.period)}</div>
+            <div style="font-weight:600;display:flex;align-items:center;gap:6px">
+              ${p.type === 'kas'
+                ? formatPeriod(p.period)
+                : `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;
+                    border-radius:4px;font-size:12px;font-weight:600">Donasi</span>`}
+            </div>
             ${statusBadge(p.status)}
           </div>
+          ${p.type === 'donasi' && p.title
+            ? `<div style="font-size:12px;color:#888;margin-bottom:2px">${p.title}</div>`
+            : ''}
           <div style="font-size:13px;color:#555">${formatRupiah(p.amount)}</div>
           <div style="font-size:12px;color:#888;margin-top:2px">
             Dikirim: ${formatDate(p.created_at)}
@@ -337,7 +471,7 @@
   }
 
   function checkCoverage() {
-    const nominal  = Number(document.getElementById('kas-amount').value) || 0;
+    const nominal   = Number(document.getElementById('kas-amount').value) || 0;
     const nSelected = selectedMonths.size;
     const covSection = document.getElementById('coverage-section');
     const warnBox    = document.getElementById('warning-box');
@@ -354,37 +488,54 @@
     warnBox.style.display    = 'none';
     successBox.style.display = 'none';
 
-    const maxBulan = Math.floor(nominal / kasPerBulan);
-    const pct      = Math.min(100, Math.round((maxBulan / nSelected) * 100));
+    const totalWajib = nSelected * kasPerBulan;
+    const maxBulan   = Math.floor(nominal / kasPerBulan);
+    const lebih      = nominal - totalWajib;
+    const kurang     = totalWajib - nominal;
+    const pct        = Math.min(100, Math.round((Math.min(nominal, totalWajib) / totalWajib) * 100));
 
     fillEl.style.width      = pct + '%';
-    fillEl.style.background = maxBulan >= nSelected ? '#2e7d32' : '#e65100';
-    labelEl.textContent     = `${maxBulan} dari ${nSelected} bulan tercakup`;
-    labelEl.style.color     = maxBulan >= nSelected ? '#2e7d32' : '#e65100';
+    fillEl.style.background = nominal >= totalWajib ? '#2e7d32' : '#e65100';
 
-    if (maxBulan < nSelected) {
-      // Ambil bulan yang bisa dicakup (sorted)
+    if (nominal > totalWajib) {
+      // Bayar lebih → kelebihan jadi donasi
+      labelEl.textContent = `Semua ${nSelected} bulan tercakup + kelebihan ${formatRupiah(lebih)}`;
+      labelEl.style.color = '#2e7d32';
+      successBox.style.display = 'block';
+      successBox.innerHTML = `
+        ✓ Semua <strong>${nSelected} bulan</strong> tercakup (${formatRupiah(totalWajib)}).<br>
+        Kelebihan <strong>${formatRupiah(lebih)}</strong> akan dicatat sebagai
+        <span style="background:#e3f2fd;color:#1565c0;padding:1px 8px;
+          border-radius:4px;font-weight:600">Donasi</span> terpisah.`;
+
+    } else if (nominal === totalWajib) {
+      // Pas
+      labelEl.textContent = `Semua ${nSelected} bulan tercakup`;
+      labelEl.style.color = '#2e7d32';
+      successBox.style.display = 'block';
+      successBox.innerHTML = `✓ Nominal pas untuk <strong>${nSelected} bulan</strong>.`;
+
+    } else {
+      // Bayar kurang → sebagian bulan jadi tunggakan
       const sortedMonths = [...selectedMonths].sort();
-      const covered      = sortedMonths.slice(0, maxBulan);
-      const uncovered    = sortedMonths.slice(maxBulan);
+      const covered   = sortedMonths.slice(0, maxBulan);
+      const uncovered = sortedMonths.slice(maxBulan);
+
+      labelEl.textContent = `${maxBulan} dari ${nSelected} bulan tercakup`;
+      labelEl.style.color = '#e65100';
 
       warnBox.style.display = 'block';
       warnBox.innerHTML = `
-        <strong>⚠ Pembayaran kas kurang</strong><br>
+        <strong>⚠ Nominal kurang — ${uncovered.length} bulan jadi tunggakan</strong><br>
         Nominal ${formatRupiah(nominal)} hanya cukup untuk
-        <strong>${maxBulan} bulan</strong> (@ ${formatRupiah(kasPerBulan)}/bulan).<br>
-        ${covered.length > 0 ? `
-          Bulan yang ter-cover: <strong>${covered.map(p => formatPeriod(p)).join(', ')}</strong><br>
-          Bulan yang tidak ter-cover: <span style="text-decoration:line-through">
-            ${uncovered.map(p => formatPeriod(p)).join(', ')}
-          </span>
-        ` : 'Nominal terlalu kecil untuk membayar bulan manapun.'}
-      `;
-    } else {
-      const lebih = nominal - (nSelected * kasPerBulan);
-      successBox.style.display = 'block';
-      successBox.innerHTML = `✓ Nominal cukup untuk ${nSelected} bulan yang dipilih.` +
-        (lebih > 0 ? ` Kelebihan ${formatRupiah(lebih)} akan dicatat sebagai catatan.` : '');
+        <strong>${maxBulan} bulan</strong> (@ ${formatRupiah(kasPerBulan)}/bulan).
+        Selisih ${formatRupiah(kurang)} dicatat sebagai tunggakan.<br><br>
+        ${covered.length > 0
+          ? `Bulan ter-cover: <strong>${covered.map(p => formatPeriod(p)).join(', ')}</strong><br>
+             Tunggakan: <span style="color:#c62828;font-weight:600">
+               ${uncovered.map(p => formatPeriod(p)).join(', ')}
+             </span>`
+          : 'Nominal terlalu kecil untuk membayar bulan manapun.'}`;
     }
   }
 
@@ -428,45 +579,90 @@
       errEl.style.display = 'block'; return;
     }
 
-    const maxBulan = Math.floor(nominal / kasPerBulan);
-    if (maxBulan === 0) {
-      errEl.textContent = `Nominal terlalu kecil. Minimal ${formatRupiah(kasPerBulan)} untuk 1 bulan.`;
+    const totalWajib = selectedMonths.size * kasPerBulan;
+
+    // Validasi minimum: nominal harus minimal 1 bulan kas
+    if (nominal < kasPerBulan) {
+      errEl.textContent = `Nominal minimum ${formatRupiah(kasPerBulan)} (1 bulan kas). ` +
+        `Kamu tidak bisa membayar kurang dari nominal per bulan.`;
       errEl.style.display = 'block'; return;
     }
 
-    // Ambil bulan yang ter-cover saja
-    const sortedMonths = [...selectedMonths].sort();
+    // Kalau nominal tidak cukup untuk semua bulan yang dipilih
+    const maxBulan  = Math.floor(nominal / kasPerBulan);
+    if (maxBulan < selectedMonths.size) {
+      // Konfirmasi dulu sebelum submit sebagian
+      const sortedMonths  = [...selectedMonths].sort();
+      const coveredMonths = sortedMonths.slice(0, maxBulan);
+      const uncovered     = sortedMonths.slice(maxBulan);
+      const konfirm = confirm(
+        `Nominal ${formatRupiah(nominal)} hanya cukup untuk ${maxBulan} bulan.\n\n` +
+        `Bulan yang akan dibayar: ${coveredMonths.map(p => formatPeriod(p)).join(', ')}\n` +
+        `Tunggakan: ${uncovered.map(p => formatPeriod(p)).join(', ')}\n\n` +
+        `Lanjutkan?`
+      );
+      if (!konfirm) return;
+    }
+
+    const sortedMonths  = [...selectedMonths].sort();
     const coveredMonths = sortedMonths.slice(0, maxBulan);
-    const nominalPerBulan = kasPerBulan;
+    const uncovered     = sortedMonths.slice(maxBulan);
+    const lebih         = nominal - (coveredMonths.length * kasPerBulan);
+    const adaDonasi     = lebih > 0;
+    const adaTunggakan  = uncovered.length > 0;
 
     setLoading(btn, true, 'Mengunggah bukti...');
     try {
-      // Upload bukti sekali → URL sama untuk semua bulan
+      // Upload bukti sekali — dipakai semua record
       const uploaded = await uploadBukti(selectedFile, 'kas', profile.full_name);
-
       btn.innerHTML = '<span class="spinner"></span>Menyimpan...';
 
-      // Submit satu record per bulan yang ter-cover
-      const promises = coveredMonths.map(period =>
+      // 1. Submit record kas per bulan yang ter-cover
+      await Promise.all(coveredMonths.map(period =>
         submitPayment({
           type:           'kas',
           period:         period,
-          amount:         nominalPerBulan,
+          amount:         kasPerBulan,
           notes:          notes || null,
           proof_url:      uploaded.url,
           proof_filename: uploaded.fileName,
         })
-      );
-      await Promise.all(promises);
+      ));
 
-      const uncovered = sortedMonths.slice(maxBulan);
-      let msg = `Pembayaran berhasil untuk ${coveredMonths.length} bulan: ` +
-        coveredMonths.map(p => formatPeriod(p)).join(', ') + '.';
-      if (uncovered.length > 0) {
-        msg += ` ${uncovered.length} bulan tidak ter-cover karena nominal kurang.`;
+      // 2. Kelebihan → record donasi di payments (terhubung ke member)
+      //    sekaligus record di transactions (masuk laporan keuangan)
+      if (adaDonasi) {
+        const donasiTitle = `Donasi dari ${profile.full_name} ` +
+          `(kelebihan kas ${coveredMonths.map(p => formatPeriod(p)).join(', ')})`;
+
+        // Record di payments (riwayat member)
+        await submitPayment({
+          type:           'donasi',
+          title:          donasiTitle,
+          amount:         lebih,
+          notes:          `Kelebihan dari pembayaran kas ${coveredMonths.length} bulan`,
+          proof_url:      uploaded.url,
+          proof_filename: uploaded.fileName,
+        });
+
+        // Record di transactions (laporan keuangan admin)
+        await insertTransaction({
+          type:             'pemasukan',
+          category:         'Donasi',
+          title:            donasiTitle,
+          amount:           lebih,
+          transaction_date: new Date().toISOString().split('T')[0],
+          notes:            `Auto dari kelebihan kas member`,
+        });
       }
 
-      showToast(msg, coveredMonths.length === sortedMonths.length ? 'success' : 'warning');
+      // 3. Susun pesan sukses
+      let msg = `Pembayaran berhasil untuk ${coveredMonths.length} bulan: ` +
+        coveredMonths.map(p => formatPeriod(p)).join(', ') + '.';
+      if (adaDonasi)    msg += ` Kelebihan ${formatRupiah(lebih)} dicatat sebagai donasi.`;
+      if (adaTunggakan) msg += ` Sisa ${uncovered.length} bulan masih jadi tunggakan.`;
+
+      showToast(msg, !adaTunggakan ? 'success' : 'warning');
       selectedMonths.clear();
       document.getElementById('kas-amount').value = '';
       document.getElementById('kas-notes').value  = '';
@@ -474,6 +670,7 @@
       clearFile();
       await loadHistory();
       renderMonthGrid();
+      loadTunggakan(); // refresh info tunggakan
 
     } catch(err) {
       errEl.textContent = err.message;
