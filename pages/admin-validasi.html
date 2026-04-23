@@ -215,16 +215,19 @@
       const result = await reviewPayment(paymentId, 'confirmed', '');
       const member = result.profiles || {};
 
-      // Kalau kas atau donasi dikonfirmasi → masuk ke transactions sebagai pemasukan
-      if (result.type === 'kas' || result.type === 'donasi') {
+      // Kalau kas/donasi/reimburse dikonfirmasi → masuk ke transactions
+      if (result.type === 'kas' || result.type === 'donasi' || result.type === 'reimburse') {
         try {
+          const isIncome = result.type === 'kas' || result.type === 'donasi';
           const title = result.type === 'kas'
             ? `Kas ${formatPeriod(result.period)} — ${member.full_name}`
-            : result.title || `Donasi — ${member.full_name}`;
+            : result.title || `${result.type === 'donasi' ? 'Donasi' : 'Reimburse'} — ${member.full_name}`;
 
           await insertTransaction({
-            type:             'pemasukan',
-            category:         result.type === 'kas' ? 'Kas Bulanan' : 'Donasi',
+            type:             isIncome ? 'pemasukan' : 'pengeluaran',
+            category:         result.type === 'kas'      ? 'Kas Bulanan'
+                            : result.type === 'donasi'   ? 'Donasi'
+                            : result.category            || 'Reimburse',
             title:            title,
             amount:           result.amount,
             transaction_date: new Date().toISOString().split('T')[0],
@@ -232,7 +235,6 @@
           });
         } catch(e) {
           console.warn('Gagal insert transactions:', e.message);
-          // Tidak throw — konfirmasi payment tetap berhasil
         }
       }
 
