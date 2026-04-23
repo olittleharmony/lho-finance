@@ -39,8 +39,8 @@
         <div class="form-group">
           <label>Status</label>
           <select id="filter-status" onchange="applyFilter()">
-            <option value="pending">Menunggu (Pending)</option>
             <option value="">Semua Status</option>
+            <option value="pending" selected>Menunggu (Pending)</option>
             <option value="confirmed">Dikonfirmasi</option>
             <option value="rejected">Ditolak</option>
           </select>
@@ -104,7 +104,13 @@
 
   async function loadPayments() {
     try {
-      allPayments = await getAllPayments({});
+      // Ambil semua status — filtering dilakukan di JS
+      const { data, error } = await getSupabase()
+        .from('payments')
+        .select(`*, profiles!user_id(full_name, division, email)`)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      allPayments = data;
       applyFilter();
     } catch(err) { showToast(err.message, 'error'); }
   }
