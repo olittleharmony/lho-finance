@@ -280,15 +280,20 @@
       const result = await reviewPayment(paymentId, 'confirmed', '');
       const member = result.profiles || {};
 
-      // Insert ke transactions jika kas/donasi
-      if (result.type === 'kas' || result.type === 'donasi') {
+      // Insert ke transactions jika kas/donasi/reimburse
+      if (result.type === 'kas' || result.type === 'donasi' || result.type === 'reimburse') {
         try {
+          const isIncome = result.type === 'kas' || result.type === 'donasi';
+          const title = result.type === 'kas'
+            ? `Kas ${formatPeriod(result.period)} — ${member.full_name}`
+            : result.title || `${result.type === 'donasi' ? 'Donasi' : 'Reimburse'} — ${member.full_name}`;
+
           await insertTransaction({
-            type:             'pemasukan',
-            category:         result.type === 'kas' ? 'Kas Bulanan' : 'Donasi',
-            title:            result.type === 'kas'
-              ? `Kas ${formatPeriod(result.period)} — ${member.full_name}`
-              : result.title || `Donasi — ${member.full_name}`,
+            type:             isIncome ? 'pemasukan' : 'pengeluaran',
+            category:         result.type === 'kas'    ? 'Kas Bulanan'
+                            : result.type === 'donasi' ? 'Donasi'
+                            : result.category          || 'Reimburse',
+            title:            title,
             amount:           result.amount,
             transaction_date: new Date().toISOString().split('T')[0],
             notes:            `Dikonfirmasi dari payment ID: ${result.id}`,
