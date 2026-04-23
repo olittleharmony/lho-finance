@@ -631,43 +631,32 @@ Lanjutkan?`
 
     setLoading(btn, true, 'Mengunggah bukti...');
     try {
+      // Upload bukti dulu
       const uploaded = await uploadBukti(selectedFile, 'kas', profile.full_name);
       btn.innerHTML = '<span class="spinner"></span>Menyimpan...';
 
-      await Promise.all(sortedMonths.map(period =>
-        submitPayment({
-          type:           'kas',
-          period:         period,
-          amount:         kasPerBulan,
-          notes:          notes || null,
-          proof_url:      uploaded.url,
-          proof_filename: uploaded.fileName,
-        })
-      ));
+      const donasiTitle = adaDonasi
+        ? `Donasi dari ${profile.full_name} (kelebihan kas ${sortedMonths.map(p => formatPeriod(p)).join(', ')})`
+        : null;
 
-      if (adaDonasi) {
-        const donasiTitle = `Donasi dari ${profile.full_name} (kelebihan kas ${sortedMonths.map(p => formatPeriod(p)).join(', ')})`;
-        await submitPayment({
-          type:           'donasi',
-          title:          donasiTitle,
-          amount:         lebih,
-          notes:          `Kelebihan dari pembayaran kas ${sortedMonths.length} bulan`,
-          proof_url:      uploaded.url,
-          proof_filename: uploaded.fileName,
-        });
-        await insertTransaction({
-          type:             'pemasukan',
-          category:         'Donasi',
-          title:            donasiTitle,
-          amount:           lebih,
-          transaction_date: new Date().toISOString().split('T')[0],
-          notes:            `Auto dari kelebihan kas member`,
-        });
-      }
+      // Pakai RPC — semua insert dalam 1 transaksi database
+      // Kalau salah satu gagal, semua dibatalkan otomatis
+      const { error } = await getSupabase().rpc('submit_kas_payment', {
+        p_user_id:        profile.id,
+        p_periods:        sortedMonths,
+        p_kas_amount:     kasPerBulan,
+        p_notes:          notes || null,
+        p_proof_url:      uploaded.url,
+        p_proof_filename: uploaded.fileName,
+        p_donasi_amount:  lebih,
+        p_donasi_title:   donasiTitle,
+      });
+
+      if (error) throw new Error(error.message);
 
       let msg = `Pembayaran berhasil untuk ${sortedMonths.length} bulan: ` +
         sortedMonths.map(p => formatPeriod(p)).join(', ') + '.';
-      if (adaDonasi) msg += ` Kelebihan ${formatRupiah(lebih)} dicatat sebagai donasi.`;
+      if (adaDonasi) msg += ` Kelebihan ${formatRupiah(lebih)} dicatat sebagai donasi. Terima kasih!`;
 
       showToast(msg, 'success');
       selectedMonths.clear();
