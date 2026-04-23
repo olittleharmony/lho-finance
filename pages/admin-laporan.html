@@ -115,7 +115,6 @@
 <script src="../js/ui.js"></script>
 <script src="../js/gas.js"></script>
 <script>
-  let allPayments = [];
   let allTransaksi = [];
   let kasData = [];
 
@@ -136,23 +135,37 @@
 
   async function loadBalance() {
     try {
-      const b = await getBalanceSummary();
-      document.getElementById('b-kas').textContent        = formatRupiah(b.kas_masuk);
-      document.getElementById('b-masuk-lain').textContent = formatRupiah(b.pemasukan_lain);
-      document.getElementById('b-keluar').textContent     = formatRupiah(b.total_pengeluaran);
-      const saldo = b.saldo_bersih;
-      document.getElementById('b-saldo').textContent = formatRupiah(saldo);
-      document.getElementById('b-saldo').style.color = saldo >= 0 ? '#2e7d32' : '#c62828';
+      // Hitung langsung dari tabel transactions — lebih reliable dari view
+      const { data, error } = await getSupabase()
+        .from('transactions')
+        .select('type, category, amount');
+      if (error) throw error;
+
+      const pemasukanKas  = data
+        .filter(t => t.type === 'pemasukan' && t.category === 'Kas Bulanan')
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const pemasukanLain = data
+        .filter(t => t.type === 'pemasukan' && t.category !== 'Kas Bulanan')
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const pengeluaran   = data
+        .filter(t => t.type !== 'pemasukan')
+        .reduce((s, t) => s + Number(t.amount), 0);
+      const saldo = pemasukanKas + pemasukanLain - pengeluaran;
+
+      document.getElementById('b-kas').textContent        = formatRupiah(pemasukanKas);
+      document.getElementById('b-masuk-lain').textContent = formatRupiah(pemasukanLain);
+      document.getElementById('b-keluar').textContent     = formatRupiah(pengeluaran);
+      document.getElementById('b-saldo').textContent      = formatRupiah(saldo);
+      document.getElementById('b-saldo').style.color      = saldo >= 0 ? '#2e7d32' : '#c62828';
       document.getElementById('saldo-card').classList.add(saldo >= 0 ? 'green' : 'red');
     } catch(err) { console.error(err); }
   }
 
   async function loadData() {
     try {
-      [allPayments, allTransaksi] = await Promise.all([
-        getAllPayments({}),
-        getAllTransactions({}),
-      ]);
+      // Hanya ambil transactions (sudah pasti validated)
+      // payments hanya untuk referensi kas yang confirmed
+      allTransaksi = await getAllTransactions({});
       applyFilter();
     } catch(err) { console.error(err); }
   }
@@ -160,21 +173,11 @@
   function applyFilter() {
     const from = document.getElementById('filter-from').value;
     const to   = document.getElementById('filter-to').value;
-
-    let payments = allPayments.filter(p => p.status === 'confirmed');
     let transaksi = [...allTransaksi];
-
-    if (from) {
-      payments  = payments.filter(p  => (p.period || p.created_at?.slice(0,7)) >= from);
-      transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) >= from);
-    }
-    if (to) {
-      payments  = payments.filter(p  => (p.period || p.created_at?.slice(0,7)) <= to);
-      transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) <= to);
-    }
-
-    renderMonthly(payments, transaksi);
-    renderCategory(payments, transaksi);
+    if (from) transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) >= from);
+    if (to)   transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) <= to);
+    renderMonthly(transaksi);
+    renderCategory(transaksi);
   }
 
   function resetFilter() {
@@ -183,54 +186,47 @@
     applyFilter();
   }
 
-  function renderMonthly(payments, transaksi) {
-    // Kumpulkan semua bulan unik
+  function renderMonthly(transaksi) {
     const months = new Set();
-    payments.forEach(p  => months.add(p.period || p.created_at?.slice(0,7)));
     transaksi.forEach(t => months.add(t.transaction_date?.slice(0,7)));
     const sorted = [...months].filter(Boolean).sort().reverse();
-
     const el = document.getElementById('monthly-report');
     if (sorted.length === 0) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-text">Tidak ada data</div></div>`;
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-text">Tidak ada data transaksi</div></div>`;
       return;
     }
-
     el.innerHTML = sorted.map(month => {
-      const kasIn   = payments.filter(p => p.type==='kas' && p.period===month).reduce((s,p)=>s+Number(p.amount),0);
-      const reimOut = payments.filter(p => p.type==='reimburse' && p.created_at?.slice(0,7)===month).reduce((s,p)=>s+Number(p.amount),0);
-      const otherIn = transaksi.filter(t => t.type==='pemasukan' && t.transaction_date?.slice(0,7)===month).reduce((s,t)=>s+Number(t.amount),0);
-      const opOut   = transaksi.filter(t => t.type!=='pemasukan' && t.transaction_date?.slice(0,7)===month).reduce((s,t)=>s+Number(t.amount),0);
-      const totalIn  = kasIn + otherIn;
-      const totalOut = reimOut + opOut;
-      const net = totalIn - totalOut;
-
+      const masuk  = transaksi
+        .filter(t => t.type==='pemasukan' && t.transaction_date?.slice(0,7)===month)
+        .reduce((s,t)=>s+Number(t.amount),0);
+      const keluar = transaksi
+        .filter(t => t.type!=='pemasukan' && t.transaction_date?.slice(0,7)===month)
+        .reduce((s,t)=>s+Number(t.amount),0);
+      const net = masuk - keluar;
       return `
       <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;
+          align-items:center;margin-bottom:6px">
           <div style="font-weight:600;font-size:14px">${formatPeriod(month)}</div>
-          <div style="font-size:14px;font-weight:700;color:${net>=0?'#2e7d32':'#c62828'}">${net>=0?'+':''}${formatRupiah(net)}</div>
+          <div style="font-size:14px;font-weight:700;
+            color:${net>=0?'#2e7d32':'#c62828'}">
+            ${net>=0?'+':''}${formatRupiah(net)}
+          </div>
         </div>
         <div style="display:flex;gap:12px;font-size:12px;color:#666">
-          <span style="color:#2e7d32">↑ ${formatRupiah(totalIn)}</span>
-          <span style="color:#c62828">↓ ${formatRupiah(totalOut)}</span>
+          <span style="color:#2e7d32">↑ ${formatRupiah(masuk)}</span>
+          <span style="color:#c62828">↓ ${formatRupiah(keluar)}</span>
         </div>
       </div>`;
     }).join('');
   }
 
-  function renderCategory(payments, transaksi) {
+  function renderCategory(transaksi) {
     const cats = {};
-    payments.filter(p => p.type==='kas').forEach(p => {
-      cats['Kas Bulanan'] = (cats['Kas Bulanan']||0) + Number(p.amount);
-    });
-    payments.filter(p => p.type==='reimburse').forEach(p => {
-      const k = 'Reimburse: '+(p.category||'lain-lain');
-      cats[k] = (cats[k]||0) + Number(p.amount);
-    });
     transaksi.forEach(t => {
-      const k = (t.category||t.type);
-      cats[k] = (cats[k]||0) + Number(t.amount);
+      const key = t.category || (t.type==='pemasukan' ? 'Pemasukan lain' : 'Pengeluaran lain');
+      cats[key] = (cats[key]||0) + Number(t.amount);
     });
 
     const sorted = Object.entries(cats).sort((a,b) => b[1]-a[1]);
