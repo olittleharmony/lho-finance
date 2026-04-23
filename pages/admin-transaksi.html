@@ -3,9 +3,59 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Laporan — LHO Finance</title>
+  <title>Input Transaksi — LHO Finance</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .bulk-table { width:100%; border-collapse:collapse; font-size:13px; }
+    .bulk-table th {
+      background:#1a1a2e; color:#fff; padding:10px 8px;
+      text-align:left; font-size:11px; font-weight:600;
+      text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap;
+    }
+    .bulk-table td { padding:6px 4px; vertical-align:middle; }
+    .bulk-table tr:not(:last-child) td { border-bottom:1px solid #f0f0f0; }
+    .bulk-table input, .bulk-table select, .bulk-table textarea {
+      padding:7px 8px; font-size:13px; width:100%;
+    }
+    .bulk-table textarea { resize:none; height:36px; }
+    .row-num {
+      width:28px; height:28px; border-radius:50%;
+      background:#f0f0f0; color:#555;
+      display:flex; align-items:center; justify-content:center;
+      font-size:12px; font-weight:600; flex-shrink:0;
+    }
+    .proof-mini {
+      display:flex; align-items:center; gap:6px;
+      font-size:12px; color:#555;
+    }
+    .proof-mini input[type=file] { display:none; }
+    .proof-mini .proof-btn {
+      padding:4px 8px; font-size:11px; white-space:nowrap;
+      background:#f0f0f0; border:1px solid #e0e0e0;
+      border-radius:4px; cursor:pointer; font-family:inherit;
+    }
+    .proof-mini .proof-btn:hover { background:#e0e0e0; }
+    .proof-name { font-size:11px; color:#888; max-width:80px;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .shared-proof-zone {
+      border:2px dashed #e0e0e0; border-radius:8px;
+      padding:16px; text-align:center; cursor:pointer;
+      background:#f9f9f9; font-size:13px; color:#888;
+      transition:all .2s;
+    }
+    .shared-proof-zone:hover { border-color:#1a1a2e; background:#f0f0f0; }
+    .shared-proof-zone.has-file { border-color:#2e7d32; background:#e8f5e9; color:#2e7d32; }
+    .tab-btn {
+      padding:8px 20px; border:1.5px solid #e0e0e0;
+      border-radius:6px; font-family:inherit; font-size:13px;
+      font-weight:500; cursor:pointer; background:#fff;
+      color:#555; transition:all .15s;
+    }
+    .tab-btn.active {
+      background:#1a1a2e; color:#fff; border-color:#1a1a2e;
+    }
+  </style>
 </head>
 <body>
 <div class="page-wrapper">
@@ -14,95 +64,185 @@
 
     <div class="page-header">
       <div class="page-header-text">
-        <h1>Laporan Keuangan</h1>
-        <p>Ringkasan saldo, laporan bulanan, dan rekap per kategori</p>
-      </div>
-      <button class="btn btn-gold" onclick="handleExport()">↑ Export ke Sheets</button>
-    </div>
-
-    <!-- Saldo real-time -->
-    <div class="stat-grid" style="margin-bottom:24px">
-      <div class="stat-card green">
-        <div class="stat-label">Total Kas Masuk</div>
-        <div class="stat-value" id="b-kas">—</div>
-        <div class="stat-sub">Dari pembayaran kas member</div>
-      </div>
-      <div class="stat-card blue">
-        <div class="stat-label">Pemasukan Lain</div>
-        <div class="stat-value" id="b-masuk-lain">—</div>
-        <div class="stat-sub">Sponsor, donasi, tiket, dll</div>
-      </div>
-      <div class="stat-card red">
-        <div class="stat-label">Total Pengeluaran</div>
-        <div class="stat-value" id="b-keluar">—</div>
-        <div class="stat-sub">Reimburse + operasional</div>
-      </div>
-      <div class="stat-card" id="saldo-card">
-        <div class="stat-label">Saldo Bersih</div>
-        <div class="stat-value" id="b-saldo">—</div>
-        <div class="stat-sub">Real-time</div>
+        <h1>Transaksi Manual</h1>
+        <p>Catat pengeluaran, pemasukan, transfer, dan honorarium</p>
       </div>
     </div>
 
-    <!-- Filter periode -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="filter-bar" style="margin-bottom:0">
-        <div class="form-group">
-          <label>Dari bulan</label>
-          <input type="month" id="filter-from" onchange="applyFilter()">
+    <!-- Tab: Single vs Bulk -->
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button class="tab-btn active" id="tab-single" onclick="switchTab('single')">
+        Input Tunggal
+      </button>
+      <button class="tab-btn" id="tab-bulk" onclick="switchTab('bulk')">
+        Input Massal (Bulk)
+      </button>
+    </div>
+
+    <!-- ===== TAB SINGLE ===== -->
+    <div id="panel-single">
+      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:20px" id="main-grid">
+
+        <!-- Form input -->
+        <div class="card">
+          <div class="card-header"><h3>Input Transaksi Baru</h3></div>
+
+          <div class="form-group">
+            <label>Tipe Transaksi <span style="color:#c62828">*</span></label>
+            <select id="trx-type" onchange="onTypeChange('trx-type','trx-category')">
+              <option value="">— Pilih tipe —</option>
+              <option value="pengeluaran">Pengeluaran Operasional</option>
+              <option value="pemasukan">Pemasukan Non-Kas</option>
+              <option value="transfer">Transfer / Mutasi Rekening</option>
+              <option value="honorarium">Honorarium / Gaji</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Kategori</label>
+            <select id="trx-category"><option value="">— Pilih tipe dulu —</option></select>
+          </div>
+          <div class="form-group">
+            <label>Keterangan <span style="color:#c62828">*</span></label>
+            <input type="text" id="trx-title" placeholder="Contoh: Sewa GOR April">
+          </div>
+          <div class="form-group">
+            <label>Nominal <span style="color:#c62828">*</span></label>
+            <input type="number" id="trx-amount" placeholder="0" min="0" step="1000">
+          </div>
+          <div class="form-group">
+            <label>Tanggal <span style="color:#c62828">*</span></label>
+            <input type="date" id="trx-date">
+          </div>
+          <div id="field-transfer" style="display:none">
+            <div class="form-group">
+              <label>Dari Rekening</label>
+              <input type="text" id="trx-from" placeholder="BCA 1234567890">
+            </div>
+            <div class="form-group">
+              <label>Ke Rekening</label>
+              <input type="text" id="trx-to" placeholder="BRI 0987654321">
+            </div>
+          </div>
+          <div id="field-honorarium" style="display:none">
+            <div class="form-group">
+              <label>Nama Penerima <span style="color:#c62828">*</span></label>
+              <input type="text" id="trx-recipient" placeholder="Nama lengkap penerima">
+            </div>
+            <div class="form-group">
+              <label>Keterangan Penerima</label>
+              <input type="text" id="trx-recipient-notes" placeholder="Pelatih piano, Nov 2025">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Catatan</label>
+            <textarea id="trx-notes" placeholder="Keterangan tambahan..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Bukti (opsional)</label>
+            <div class="upload-zone" id="upload-zone"
+              onclick="document.getElementById('trx-file').click()">
+              <input type="file" id="trx-file" accept="image/*,.pdf"
+                onchange="handleFileSelect(this)">
+              <div class="upload-icon">📎</div>
+              <div class="upload-text">Upload nota atau bukti transfer</div>
+              <div class="upload-sub">JPG, PNG, PDF · Maks 10MB</div>
+            </div>
+            <div id="file-preview" style="display:none" class="upload-preview">
+              <span id="file-icon">📄</span>
+              <div style="flex:1">
+                <div id="file-name" style="font-weight:500"></div>
+                <div id="file-size" style="font-size:12px;color:#888"></div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="clearFile()">✕</button>
+            </div>
+          </div>
+          <div id="submit-error"
+            style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+          <button class="btn btn-primary btn-block" id="btn-submit" onclick="handleSubmit()">
+            Simpan Transaksi
+          </button>
         </div>
-        <div class="form-group">
-          <label>Sampai bulan</label>
-          <input type="month" id="filter-to" onchange="applyFilter()">
+
+        <!-- Riwayat -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Riwayat Transaksi</h3>
+            <select id="hist-filter" onchange="filterHistory()"
+              style="font-size:13px;padding:4px 8px">
+              <option value="">Semua Tipe</option>
+              <option value="pengeluaran">Pengeluaran</option>
+              <option value="pemasukan">Pemasukan</option>
+              <option value="transfer">Transfer</option>
+              <option value="honorarium">Honorarium</option>
+            </select>
+          </div>
+          <div id="history-list">
+            <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+          </div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="resetFilter()" style="align-self:flex-end;margin-bottom:0">Reset</button>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px" id="mid-grid">
+    <!-- ===== TAB BULK ===== -->
+    <div id="panel-bulk" style="display:none">
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <h3>Input Massal</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="addBulkRow()">+ Tambah Baris</button>
+            <button class="btn btn-ghost btn-sm" onclick="clearAllRows()">Kosongkan</button>
+          </div>
+        </div>
 
-      <!-- Laporan per bulan -->
+        <!-- Shared proof -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:13px;font-weight:600;margin-bottom:6px;display:block">
+            Bukti Bersama (opsional) — satu bukti untuk semua baris
+          </label>
+          <div class="shared-proof-zone" id="shared-proof-zone"
+            onclick="document.getElementById('shared-proof-file').click()">
+            <input type="file" id="shared-proof-file" accept="image/*,.pdf"
+              onchange="handleSharedProof(this)" style="display:none">
+            <span id="shared-proof-label">Klik untuk upload bukti bersama</span>
+          </div>
+        </div>
+
+        <!-- Tabel baris transaksi -->
+        <div style="overflow-x:auto">
+          <table class="bulk-table">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th style="min-width:130px">Tipe</th>
+                <th style="min-width:120px">Kategori</th>
+                <th style="min-width:180px">Keterangan</th>
+                <th style="min-width:110px">Nominal</th>
+                <th style="min-width:120px">Tanggal</th>
+                <th style="min-width:100px">Catatan</th>
+                <th style="min-width:110px">Bukti per baris</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody id="bulk-rows"></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div id="bulk-summary" style="font-size:13px;color:#555;flex:1"></div>
+          <div id="bulk-error"
+            style="color:#c62828;font-size:13px;display:none"></div>
+          <button class="btn btn-primary" id="btn-bulk-submit" onclick="handleBulkSubmit()">
+            Simpan Semua Transaksi
+          </button>
+        </div>
+      </div>
+
+      <!-- Riwayat di tab bulk -->
       <div class="card">
-        <div class="card-header"><h3>Laporan per Bulan</h3></div>
-        <div id="monthly-report">
+        <div class="card-header"><h3>Riwayat Transaksi</h3></div>
+        <div id="history-list-bulk">
           <div class="empty-state"><div class="spinner spinner-dark"></div></div>
         </div>
-      </div>
-
-      <!-- Rekap kategori -->
-      <div class="card">
-        <div class="card-header"><h3>Rekap per Kategori</h3></div>
-        <div id="category-report">
-          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Kepatuhan kas semua member -->
-    <div class="card" style="margin-bottom:20px">
-      <div class="card-header">
-        <h3>Status Kas Member</h3>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="month" id="kas-period-filter" onchange="loadKasTable()" style="font-size:13px;padding:4px 8px">
-          <input type="text" id="kas-search" placeholder="Cari nama..." oninput="filterKasTable()" style="font-size:13px;padding:4px 8px;width:140px">
-        </div>
-      </div>
-      <div class="table-wrapper">
-        <table>
-          <thead>
-            <tr>
-              <th>Nama Member</th>
-              <th>Divisi</th>
-              <th>Nominal</th>
-              <th>Status</th>
-              <th>Tgl Submit</th>
-              <th>Dikonfirmasi</th>
-            </tr>
-          </thead>
-          <tbody id="kas-table-body">
-            <tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Memuat...</td></tr>
-          </tbody>
-        </table>
       </div>
     </div>
 
@@ -115,204 +255,435 @@
 <script src="../js/ui.js"></script>
 <script src="../js/gas.js"></script>
 <script>
-  let allPayments = [];
-  let allTransaksi = [];
-  let kasData = [];
+  let profile       = null;
+  let selectedFile  = null;
+  let allTransaksi  = [];
+  let sharedProofFile = null;
+  let bulkRowFiles  = {}; // rowId → File
+  let bulkRowCount  = 0;
+
+  const CATEGORIES = {
+    pengeluaran: [
+      'Sewa tempat',
+      'Alat musik & perlengkapan',
+      'Operasional & administrasi',
+      'Konsumsi & katering',
+      'Dokumentasi & media',
+      'Transportasi',
+      'Kostum & seragam',
+      'Promosi & publikasi',
+      'Honorarium',
+      'Lain-lain',
+    ],
+    pemasukan: [
+      'Kas bulanan member',
+      'Job & pertunjukan',
+      'Wedding & event',
+      'Corporate event',
+      'Sponsor & partnership',
+      'Donasi',
+      'Tiket konser',
+      'Subsidi & hibah',
+      'Iuran kegiatan',
+      'Lain-lain',
+    ],
+    transfer:    [
+      'Transfer antar rekening',
+      'Kas masuk ke bank',
+      'Kas keluar dari bank',
+    ],
+    honorarium:  [
+      'Pelatih tetap',
+      'Pelatih tamu',
+      'Dirigen',
+      'Musisi tamu & solois',
+      'Sound engineer',
+      'Staf produksi',
+      'MC & host',
+      'Lain-lain',
+    ],
+  };
 
   async function init() {
-    const profile = await requireAuth('admin');
+    profile = await requireAuth('admin');
     if (!profile) return;
-    document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'admin-laporan');
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-transaksi');
+    document.getElementById('trx-date').value =
+      new Date().toISOString().split('T')[0];
 
-    // Default filter: 6 bulan terakhir
-    const now  = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-    document.getElementById('filter-from').value = from.toISOString().slice(0,7);
-    document.getElementById('filter-to').value   = currentPeriod();
-    document.getElementById('kas-period-filter').value = currentPeriod();
-
-    await Promise.all([loadBalance(), loadData(), loadKasTable()]);
-  }
-
-  async function loadBalance() {
-    try {
-      const b = await getBalanceSummary();
-      document.getElementById('b-kas').textContent        = formatRupiah(b.kas_masuk);
-      document.getElementById('b-masuk-lain').textContent = formatRupiah(b.pemasukan_lain);
-      document.getElementById('b-keluar').textContent     = formatRupiah(b.total_pengeluaran);
-      const saldo = b.saldo_bersih;
-      document.getElementById('b-saldo').textContent = formatRupiah(saldo);
-      document.getElementById('b-saldo').style.color = saldo >= 0 ? '#2e7d32' : '#c62828';
-      document.getElementById('saldo-card').classList.add(saldo >= 0 ? 'green' : 'red');
-    } catch(err) { console.error(err); }
-  }
-
-  async function loadData() {
-    try {
-      [allPayments, allTransaksi] = await Promise.all([
-        getAllPayments({}),
-        getAllTransactions({}),
-      ]);
-      applyFilter();
-    } catch(err) { console.error(err); }
-  }
-
-  function applyFilter() {
-    const from = document.getElementById('filter-from').value;
-    const to   = document.getElementById('filter-to').value;
-
-    let payments = allPayments.filter(p => p.status === 'confirmed');
-    let transaksi = [...allTransaksi];
-
-    if (from) {
-      payments  = payments.filter(p  => (p.period || p.created_at?.slice(0,7)) >= from);
-      transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) >= from);
-    }
-    if (to) {
-      payments  = payments.filter(p  => (p.period || p.created_at?.slice(0,7)) <= to);
-      transaksi = transaksi.filter(t => t.transaction_date?.slice(0,7) <= to);
-    }
-
-    renderMonthly(payments, transaksi);
-    renderCategory(payments, transaksi);
-  }
-
-  function resetFilter() {
-    document.getElementById('filter-from').value = '';
-    document.getElementById('filter-to').value   = '';
-    applyFilter();
-  }
-
-  function renderMonthly(payments, transaksi) {
-    // Kumpulkan semua bulan unik
-    const months = new Set();
-    payments.forEach(p  => months.add(p.period || p.created_at?.slice(0,7)));
-    transaksi.forEach(t => months.add(t.transaction_date?.slice(0,7)));
-    const sorted = [...months].filter(Boolean).sort().reverse();
-
-    const el = document.getElementById('monthly-report');
-    if (sorted.length === 0) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-text">Tidak ada data</div></div>`;
-      return;
-    }
-
-    el.innerHTML = sorted.map(month => {
-      const kasIn   = payments.filter(p => p.type==='kas' && p.period===month).reduce((s,p)=>s+Number(p.amount),0);
-      const reimOut = payments.filter(p => p.type==='reimburse' && p.created_at?.slice(0,7)===month).reduce((s,p)=>s+Number(p.amount),0);
-      const otherIn = transaksi.filter(t => t.type==='pemasukan' && t.transaction_date?.slice(0,7)===month).reduce((s,t)=>s+Number(t.amount),0);
-      const opOut   = transaksi.filter(t => t.type!=='pemasukan' && t.transaction_date?.slice(0,7)===month).reduce((s,t)=>s+Number(t.amount),0);
-      const totalIn  = kasIn + otherIn;
-      const totalOut = reimOut + opOut;
-      const net = totalIn - totalOut;
-
-      return `
-      <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div style="font-weight:600;font-size:14px">${formatPeriod(month)}</div>
-          <div style="font-size:14px;font-weight:700;color:${net>=0?'#2e7d32':'#c62828'}">${net>=0?'+':''}${formatRupiah(net)}</div>
-        </div>
-        <div style="display:flex;gap:12px;font-size:12px;color:#666">
-          <span style="color:#2e7d32">↑ ${formatRupiah(totalIn)}</span>
-          <span style="color:#c62828">↓ ${formatRupiah(totalOut)}</span>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  function renderCategory(payments, transaksi) {
-    const cats = {};
-    payments.filter(p => p.type==='kas').forEach(p => {
-      cats['Kas Bulanan'] = (cats['Kas Bulanan']||0) + Number(p.amount);
-    });
-    payments.filter(p => p.type==='reimburse').forEach(p => {
-      const k = 'Reimburse: '+(p.category||'lain-lain');
-      cats[k] = (cats[k]||0) + Number(p.amount);
-    });
-    transaksi.forEach(t => {
-      const k = (t.category||t.type);
-      cats[k] = (cats[k]||0) + Number(t.amount);
+    // Drag drop single
+    const zone = document.getElementById('upload-zone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) handleFileSelect({ files: e.dataTransfer.files });
     });
 
-    const sorted = Object.entries(cats).sort((a,b) => b[1]-a[1]);
-    const max = sorted[0]?.[1] || 1;
+    // Default 3 baris di bulk
+    addBulkRow(); addBulkRow(); addBulkRow();
+    await loadHistory();
+  }
 
-    const el = document.getElementById('category-report');
-    if (sorted.length === 0) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-text">Tidak ada data</div></div>`;
-      return;
+  // ---- Tab switch ----
+  function switchTab(tab) {
+    document.getElementById('panel-single').style.display = tab === 'single' ? '' : 'none';
+    document.getElementById('panel-bulk').style.display   = tab === 'bulk'   ? '' : 'none';
+    document.getElementById('tab-single').classList.toggle('active', tab === 'single');
+    document.getElementById('tab-bulk').classList.toggle('active', tab === 'bulk');
+  }
+
+  // ---- Type/category helpers ----
+  function onTypeChange(typeId, catId) {
+    const type   = document.getElementById(typeId).value;
+    const catSel = document.getElementById(catId);
+    catSel.innerHTML = '<option value="">— Pilih kategori —</option>';
+    if (type && CATEGORIES[type]) {
+      CATEGORIES[type].forEach(c => {
+        catSel.innerHTML += `<option value="${c}">${c}</option>`;
+      });
+    }
+    // Tampilkan field tambahan khusus transfer & honorarium
+    if (typeId === 'trx-type') {
+      document.getElementById('field-transfer').style.display =
+        type === 'transfer' ? '' : 'none';
+      document.getElementById('field-honorarium').style.display =
+        type === 'honorarium' ? '' : 'none';
+    }
+  }
+
+  // ---- Single form ----
+  function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+    selectedFile = file;
+    document.getElementById('file-icon').textContent =
+      file.type.startsWith('image/') ? '🖼️' : '📄';
+    document.getElementById('file-name').textContent = file.name;
+    document.getElementById('file-size').textContent =
+      (file.size/1024).toFixed(1) + ' KB';
+    document.getElementById('file-preview').style.display = 'flex';
+    document.getElementById('upload-zone').style.display  = 'none';
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    document.getElementById('trx-file').value = '';
+    document.getElementById('file-preview').style.display = 'none';
+    document.getElementById('upload-zone').style.display  = 'block';
+  }
+
+  async function handleSubmit() {
+    const type     = document.getElementById('trx-type').value;
+    const category = document.getElementById('trx-category').value;
+    const title    = document.getElementById('trx-title').value.trim();
+    const amount   = Number(document.getElementById('trx-amount').value);
+    const date     = document.getElementById('trx-date').value;
+    const notes    = document.getElementById('trx-notes').value.trim();
+    const errEl    = document.getElementById('submit-error');
+    const btn      = document.getElementById('btn-submit');
+    errEl.style.display = 'none';
+
+    if (!type)   { errEl.textContent='Tipe wajib dipilih.'; errEl.style.display='block'; return; }
+    if (!title)  { errEl.textContent='Keterangan wajib diisi.'; errEl.style.display='block'; return; }
+    if (!amount) { errEl.textContent='Nominal harus lebih dari 0.'; errEl.style.display='block'; return; }
+    if (!date)   { errEl.textContent='Tanggal wajib diisi.'; errEl.style.display='block'; return; }
+    if (type === 'honorarium' && !document.getElementById('trx-recipient').value.trim()) {
+      errEl.textContent='Nama penerima wajib diisi.'; errEl.style.display='block'; return;
     }
 
-    el.innerHTML = sorted.map(([cat, amount]) => {
-      const pct = Math.round((amount/max)*100);
-      // Deteksi pemasukan berdasarkan kategori yang diketahui
-      const INCOME_CATS = [
-        'Kas Bulanan','Kas bulanan member','Job & pertunjukan',
-        'Wedding & event','Corporate event','Sponsor & partnership',
-        'Sponsor','Donasi','Tiket konser','Tiket','Subsidi & hibah',
-        'Subsidi','Iuran kegiatan',
-      ];
-      const isIncome = INCOME_CATS.some(c =>
-        cat === c || cat.toLowerCase().includes(c.toLowerCase())
-      );
-      return `
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-          <span>${cat}</span>
-          <span style="font-weight:600">${formatRupiah(amount)}</span>
-        </div>
-        <div style="background:#e0e0e0;border-radius:99px;height:7px">
-          <div style="background:${isIncome?'#2e7d32':'#c62828'};height:100%;width:${pct}%;border-radius:99px"></div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  let kasTableData = [];
-  async function loadKasTable() {
-    const period = document.getElementById('kas-period-filter').value;
+    setLoading(btn, true, 'Menyimpan...');
     try {
-      kasData = await getKasStatusAll(period || null);
-      filterKasTable();
-    } catch(err) { console.error(err); }
-  }
-
-  function filterKasTable() {
-    const search = document.getElementById('kas-search').value.toLowerCase();
-    const data   = search ? kasData.filter(r => r.full_name?.toLowerCase().includes(search)) : kasData;
-    const tbody  = document.getElementById('kas-table-body');
-
-    if (data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#aaa">Tidak ada data</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = data.map(r => `
-      <tr>
-        <td style="font-weight:500">${r.full_name || '—'}</td>
-        <td style="font-size:13px;color:#888">${r.division || '—'}</td>
-        <td style="font-size:13px">${r.amount ? formatRupiah(r.amount) : '—'}</td>
-        <td>${r.status ? statusBadge(r.status) : '<span style="color:#c62828;font-size:12px;font-weight:600">Belum bayar</span>'}</td>
-        <td style="font-size:13px;color:#888">${r.submitted_at ? formatDate(r.submitted_at) : '—'}</td>
-        <td style="font-size:13px;color:#888">${r.reviewed_at ? formatDate(r.reviewed_at) : '—'}</td>
-      </tr>
-    `).join('');
-  }
-
-  async function handleExport() {
-    const btn = event.target;
-    setLoading(btn, true, 'Meng-export...');
-    try {
-      await triggerSyncSheets('full');
-      showToast('Berhasil di-export ke Google Sheets!', 'success');
+      let proofUrl = null, proofFilename = null;
+      if (selectedFile) {
+        btn.innerHTML = '<span class="spinner"></span>Upload bukti...';
+        const up = await uploadBukti(selectedFile, type, profile.full_name);
+        proofUrl = up.url; proofFilename = up.fileName;
+      }
+      await insertTransaction({
+        type, category: category || null, title, amount,
+        transaction_date: date, notes: notes || null,
+        proof_url: proofUrl, proof_filename: proofFilename,
+        from_account:    type==='transfer'   ? document.getElementById('trx-from').value.trim()||null : null,
+        to_account:      type==='transfer'   ? document.getElementById('trx-to').value.trim()||null   : null,
+        recipient_name:  type==='honorarium' ? document.getElementById('trx-recipient').value.trim()  : null,
+        recipient_notes: type==='honorarium' ? document.getElementById('trx-recipient-notes').value.trim()||null : null,
+      });
+      showToast('Transaksi berhasil disimpan!', 'success');
+      ['trx-type','trx-category','trx-title','trx-amount','trx-notes',
+       'trx-from','trx-to','trx-recipient','trx-recipient-notes']
+        .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+      document.getElementById('trx-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('field-transfer').style.display   = 'none';
+      document.getElementById('field-honorarium').style.display = 'none';
+      clearFile();
+      await loadHistory();
     } catch(err) {
-      showToast('Export gagal: ' + err.message, 'error');
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      showToast(err.message, 'error');
     } finally {
-      setLoading(btn, false, '↑ Export ke Sheets');
+      setLoading(btn, false, 'Simpan Transaksi');
     }
+  }
+
+  // ---- Bulk form ----
+  function addBulkRow() {
+    const id  = ++bulkRowCount;
+    const today = new Date().toISOString().split('T')[0];
+    const tbody = document.getElementById('bulk-rows');
+    const tr    = document.createElement('tr');
+    tr.id       = `bulk-row-${id}`;
+    tr.innerHTML = `
+      <td><div class="row-num">${id}</div></td>
+      <td>
+        <select id="btype-${id}" onchange="onBulkTypeChange(${id})"
+          style="width:100%;padding:7px 6px;font-size:13px">
+          <option value="">— Tipe —</option>
+          <option value="pengeluaran">Pengeluaran</option>
+          <option value="pemasukan">Pemasukan</option>
+          <option value="transfer">Transfer</option>
+          <option value="honorarium">Honorarium</option>
+        </select>
+      </td>
+      <td>
+        <select id="bcat-${id}" style="width:100%;padding:7px 6px;font-size:13px">
+          <option value="">—</option>
+        </select>
+      </td>
+      <td><input type="text" id="btitle-${id}" placeholder="Keterangan..."></td>
+      <td><input type="number" id="bamount-${id}" placeholder="0" min="0" step="1000"
+        oninput="updateBulkSummary()"></td>
+      <td><input type="date" id="bdate-${id}" value="${today}"></td>
+      <td><textarea id="bnotes-${id}" style="width:100%;font-size:12px;
+        resize:none;height:36px;padding:6px 8px"></textarea></td>
+      <td>
+        <div class="proof-mini">
+          <input type="file" id="bfile-${id}" accept="image/*,.pdf"
+            onchange="handleRowFile(${id}, this)">
+          <button class="proof-btn" onclick="document.getElementById('bfile-${id}').click()">
+            Upload
+          </button>
+          <span class="proof-name" id="bfilename-${id}">—</span>
+        </div>
+      </td>
+      <td>
+        <button onclick="removeBulkRow(${id})"
+          style="background:none;border:none;color:#c62828;cursor:pointer;
+            font-size:16px;padding:4px;line-height:1">✕</button>
+      </td>`;
+    tbody.appendChild(tr);
+    updateBulkSummary();
+  }
+
+  function removeBulkRow(id) {
+    document.getElementById(`bulk-row-${id}`)?.remove();
+    delete bulkRowFiles[id];
+    updateBulkSummary();
+  }
+
+  function clearAllRows() {
+    document.getElementById('bulk-rows').innerHTML = '';
+    bulkRowFiles = {};
+    bulkRowCount = 0;
+    addBulkRow(); addBulkRow(); addBulkRow();
+    updateBulkSummary();
+  }
+
+  function onBulkTypeChange(id) {
+    const type   = document.getElementById(`btype-${id}`).value;
+    const catSel = document.getElementById(`bcat-${id}`);
+    catSel.innerHTML = '<option value="">—</option>';
+    if (type && CATEGORIES[type]) {
+      CATEGORIES[type].forEach(c => {
+        catSel.innerHTML += `<option value="${c}">${c}</option>`;
+      });
+    }
+  }
+
+  function handleRowFile(id, input) {
+    const file = input.files[0];
+    if (!file) return;
+    bulkRowFiles[id] = file;
+    document.getElementById(`bfilename-${id}`).textContent = file.name;
+    document.getElementById(`bfilename-${id}`).style.color = '#2e7d32';
+  }
+
+  function handleSharedProof(input) {
+    const file = input.files[0];
+    if (!file) return;
+    sharedProofFile = file;
+    const zone  = document.getElementById('shared-proof-zone');
+    const label = document.getElementById('shared-proof-label');
+    zone.classList.add('has-file');
+    label.textContent = `✓ ${file.name} (${(file.size/1024).toFixed(0)} KB) — berlaku untuk semua baris`;
+  }
+
+  function updateBulkSummary() {
+    const rows   = document.querySelectorAll('#bulk-rows tr');
+    let total = 0, count = 0;
+    rows.forEach(row => {
+      const id = row.id.replace('bulk-row-','');
+      const v  = Number(document.getElementById(`bamount-${id}`)?.value || 0);
+      if (v > 0) { total += v; count++; }
+    });
+    document.getElementById('bulk-summary').textContent =
+      `${rows.length} baris · ${count} terisi · Total: ${formatRupiah(total)}`;
+  }
+
+  async function handleBulkSubmit() {
+    const rows  = document.querySelectorAll('#bulk-rows tr');
+    const errEl = document.getElementById('bulk-error');
+    const btn   = document.getElementById('btn-bulk-submit');
+    errEl.style.display = 'none';
+
+    // Validasi
+    const toSubmit = [];
+    for (const row of rows) {
+      const id     = row.id.replace('bulk-row-','');
+      const type   = document.getElementById(`btype-${id}`).value;
+      const title  = document.getElementById(`btitle-${id}`).value.trim();
+      const amount = Number(document.getElementById(`bamount-${id}`).value);
+      const date   = document.getElementById(`bdate-${id}`).value;
+      if (!type && !title && !amount) continue; // baris kosong, skip
+      if (!type || !title || !amount || !date) {
+        errEl.textContent = `Baris #${id}: tipe, keterangan, nominal, dan tanggal wajib diisi.`;
+        errEl.style.display = 'block'; return;
+      }
+      toSubmit.push({ id, type, title, amount, date,
+        category: document.getElementById(`bcat-${id}`).value || null,
+        notes:    document.getElementById(`bnotes-${id}`).value.trim() || null,
+      });
+    }
+
+    if (toSubmit.length === 0) {
+      errEl.textContent = 'Tidak ada baris yang terisi.';
+      errEl.style.display = 'block'; return;
+    }
+
+    setLoading(btn, true, 'Memproses...');
+    try {
+      // Upload shared proof sekali jika ada
+      let sharedUrl = null, sharedFilename = null;
+      if (sharedProofFile) {
+        btn.innerHTML = `<span class="spinner"></span>Upload bukti bersama...`;
+        const up = await uploadBukti(sharedProofFile, 'operasional', profile.full_name);
+        sharedUrl = up.url; sharedFilename = up.fileName;
+      }
+
+      let done = 0;
+      for (const row of toSubmit) {
+        btn.innerHTML = `<span class="spinner"></span>Menyimpan ${++done}/${toSubmit.length}...`;
+
+        // Upload bukti per baris jika ada
+        let proofUrl = sharedUrl, proofFilename = sharedFilename;
+        if (bulkRowFiles[row.id]) {
+          const up = await uploadBukti(bulkRowFiles[row.id], row.type, profile.full_name);
+          proofUrl = up.url; proofFilename = up.fileName;
+        }
+
+        await insertTransaction({
+          type:             row.type,
+          category:         row.category,
+          title:            row.title,
+          amount:           row.amount,
+          transaction_date: row.date,
+          notes:            row.notes,
+          proof_url:        proofUrl,
+          proof_filename:   proofFilename,
+        });
+      }
+
+      showToast(`${toSubmit.length} transaksi berhasil disimpan!`, 'success');
+      clearAllRows();
+      sharedProofFile = null;
+      document.getElementById('shared-proof-zone').classList.remove('has-file');
+      document.getElementById('shared-proof-label').textContent =
+        'Klik untuk upload bukti bersama';
+      await loadHistory();
+    } catch(err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Simpan Semua Transaksi');
+    }
+  }
+
+  // ---- History ----
+  async function loadHistory() {
+    try {
+      allTransaksi = await getAllTransactions({});
+      filterHistory();
+      renderHistoryBulk();
+    } catch(err) { console.error(err); }
+  }
+
+  function filterHistory() {
+    const type = document.getElementById('hist-filter').value;
+    const data = type ? allTransaksi.filter(t => t.type === type) : allTransaksi;
+    renderHistoryEl(data, 'history-list');
+  }
+
+  function renderHistoryBulk() {
+    renderHistoryEl(allTransaksi, 'history-list-bulk');
+  }
+
+  function renderHistoryEl(data, elId) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    if (data.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <div class="empty-text">Belum ada transaksi</div>
+      </div>`;
+      return;
+    }
+    const totalIn  = data.filter(t=>t.type==='pemasukan').reduce((s,t)=>s+Number(t.amount),0);
+    const totalOut = data.filter(t=>t.type!=='pemasukan').reduce((s,t)=>s+Number(t.amount),0);
+    el.innerHTML = `
+      <div style="display:flex;gap:12px;margin-bottom:14px;font-size:13px;flex-wrap:wrap">
+        <span style="background:#e8f5e9;color:#2e7d32;padding:4px 10px;border-radius:6px">
+          Masuk: ${formatRupiah(totalIn)}
+        </span>
+        <span style="background:#ffebee;color:#c62828;padding:4px 10px;border-radius:6px">
+          Keluar: ${formatRupiah(totalOut)}
+        </span>
+      </div>
+      ${data.map(t => `
+      <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+              ${typeBadge(t.type)}
+              ${t.category ? `<span style="font-size:12px;color:#888">${t.category}</span>` : ''}
+            </div>
+            <div style="font-size:14px;font-weight:600">${t.title}</div>
+            ${t.recipient_name ? `<div style="font-size:12px;color:#555">Penerima: ${t.recipient_name}</div>` : ''}
+            <div style="font-size:12px;color:#aaa;margin-top:2px">
+              ${formatDateOnly(t.transaction_date)} · ${t.profiles?.full_name||''}
+            </div>
+            ${t.notes ? `<div style="font-size:12px;color:#888;font-style:italic">"${t.notes}"</div>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:15px;font-weight:700;
+              color:${t.type==='pemasukan'?'#2e7d32':'#c62828'}">
+              ${t.type==='pemasukan'?'+':'−'}${formatRupiah(t.amount)}
+            </div>
+            ${t.proof_url
+              ? `<a href="${t.proof_url}" target="_blank"
+                  class="btn btn-ghost btn-sm" style="margin-top:4px">Bukti ↗</a>`
+              : ''}
+          </div>
+        </div>
+      </div>`).join('')}`;
   }
 
   function checkGrid() {
-    const g = document.getElementById('mid-grid');
-    if (g) g.style.gridTemplateColumns = window.innerWidth < 700 ? '1fr' : '1fr 1fr';
+    const g = document.getElementById('main-grid');
+    if (g) g.style.gridTemplateColumns =
+      window.innerWidth < 700 ? '1fr' : '1fr 1.4fr';
   }
   window.addEventListener('resize', checkGrid);
   checkGrid();
