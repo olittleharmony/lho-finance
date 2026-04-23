@@ -244,7 +244,16 @@
 
     el.innerHTML = sorted.map(([cat, amount]) => {
       const pct = Math.round((amount/max)*100);
-      const isIncome = cat === 'Kas Bulanan' || cat.includes('Sponsor') || cat.includes('Donasi') || cat.includes('Tiket') || cat.includes('pemasukan');
+      // Deteksi pemasukan berdasarkan kategori yang diketahui
+      const INCOME_CATS = [
+        'Kas Bulanan','Kas bulanan member','Job & pertunjukan',
+        'Wedding & event','Corporate event','Sponsor & partnership',
+        'Sponsor','Donasi','Tiket konser','Tiket','Subsidi & hibah',
+        'Subsidi','Iuran kegiatan',
+      ];
+      const isIncome = INCOME_CATS.some(c =>
+        cat === c || cat.toLowerCase().includes(c.toLowerCase())
+      );
       return `
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
