@@ -23,24 +23,24 @@
     <!-- Saldo stat cards -->
     <div class="stat-grid">
       <div class="stat-card green">
-        <div class="stat-label">Total Pemasukan</div>
-        <div class="stat-value" id="stat-masuk">—</div>
-        <div class="stat-sub">Kas + pemasukan lain</div>
+        <div class="stat-label">Pemasukan Kas</div>
+        <div class="stat-value" id="stat-kas">—</div>
+        <div class="stat-sub">Kas bulanan member</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Pemasukan Lain</div>
+        <div class="stat-value" id="stat-lain">—</div>
+        <div class="stat-sub">Donasi, job, sponsor, dll</div>
       </div>
       <div class="stat-card red">
         <div class="stat-label">Total Pengeluaran</div>
         <div class="stat-value" id="stat-keluar">—</div>
-        <div class="stat-sub">Reimburse + operasional</div>
+        <div class="stat-sub">Operasional + honorarium</div>
       </div>
-      <div class="stat-card blue">
+      <div class="stat-card orange">
         <div class="stat-label">Saldo Bersih</div>
         <div class="stat-value" id="stat-saldo">—</div>
         <div class="stat-sub">Pemasukan − Pengeluaran</div>
-      </div>
-      <div class="stat-card orange">
-        <div class="stat-label">Menunggu Validasi</div>
-        <div class="stat-value" id="stat-pending">—</div>
-        <div class="stat-sub"><a href="admin-validasi.html" style="color:inherit">Lihat antrian →</a></div>
       </div>
     </div>
 
@@ -365,11 +365,12 @@
   async function loadBalance() {
     try {
       const b = await getBalanceSummary();
-      document.getElementById('stat-masuk').textContent  = formatRupiah(b.total_pemasukan);
-      document.getElementById('stat-keluar').textContent = formatRupiah(b.total_pengeluaran);
+      document.getElementById('stat-kas').textContent    = formatRupiah(b.pemasukan_kas   || 0);
+      document.getElementById('stat-lain').textContent   = formatRupiah(b.pemasukan_lain  || 0);
+      document.getElementById('stat-keluar').textContent = formatRupiah(b.total_pengeluaran || 0);
       const saldoEl = document.getElementById('stat-saldo');
-      saldoEl.textContent = formatRupiah(b.saldo_bersih);
-      saldoEl.style.color = b.saldo_bersih >= 0 ? '#2e7d32' : '#c62828';
+      saldoEl.textContent = formatRupiah(b.saldo_bersih || 0);
+      saldoEl.style.color = (b.saldo_bersih || 0) >= 0 ? '#2e7d32' : '#c62828';
     } catch(err) { console.error(err); }
   }
 
