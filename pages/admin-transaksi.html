@@ -89,7 +89,7 @@
 
           <div class="form-group">
             <label>Tipe Transaksi <span style="color:#c62828">*</span></label>
-            <select id="trx-type" onchange="onTypeChange('trx','trx-category')">
+            <select id="trx-type" onchange="onTypeChange('trx-type','trx-category')">
               <option value="">— Pilih tipe —</option>
               <option value="pengeluaran">Pengeluaran Operasional</option>
               <option value="pemasukan">Pemasukan Non-Kas</option>
@@ -309,6 +309,7 @@
         catSel.innerHTML += `<option value="${c}">${c}</option>`;
       });
     }
+    // Tampilkan field tambahan khusus transfer & honorarium
     if (typeId === 'trx-type') {
       document.getElementById('field-transfer').style.display =
         type === 'transfer' ? '' : 'none';
