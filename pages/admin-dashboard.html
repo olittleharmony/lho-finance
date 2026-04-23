@@ -137,6 +137,7 @@
       const tasks = [];
       const kasPending   = payments.filter(p => p.type === 'kas');
       const reimPending  = payments.filter(p => p.type === 'reimburse');
+      const donasiPending = payments.filter(p => p.type === 'donasi');
 
       if (kasPending.length > 0) tasks.push({
         type: 'urgent',
@@ -152,8 +153,15 @@
         href: 'admin-validasi.html?filter=reimburse',
         action: 'Review',
       });
+      if (donasiPending.length > 0) tasks.push({
+        type: 'info',
+        title: `${donasiPending.length} donasi member menunggu`,
+        sub: 'Kelebihan pembayaran kas dari member',
+        href: 'admin-validasi.html?filter=donasi',
+        action: 'Konfirmasi',
+      });
 
-      const total = kasPending.length + reimPending.length;
+      const total = kasPending.length + reimPending.length + donasiPending.length;
       document.getElementById('stat-pending').textContent = total;
       const badge = document.getElementById('task-badge');
       badge.textContent = total;
