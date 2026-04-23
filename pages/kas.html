@@ -470,20 +470,25 @@
     if (kasPerBulan > 0) {
       document.getElementById('kas-amount').value = selectedMonths.size * kasPerBulan;
     }
+    // Reset checkbox donasi saat bulan berubah
+    const cb = document.getElementById('donasi-confirm');
+    if (cb) cb.checked = false;
     checkCoverage();
   }
 
   function checkCoverage() {
-    const nominal   = Number(document.getElementById('kas-amount').value) || 0;
-    const nSelected = selectedMonths.size;
+    const nominal    = Number(document.getElementById('kas-amount').value) || 0;
+    const nSelected  = selectedMonths.size;
     const covSection = document.getElementById('coverage-section');
     const warnBox    = document.getElementById('warning-box');
     const successBox = document.getElementById('success-box');
     const fillEl     = document.getElementById('coverage-fill');
     const labelEl    = document.getElementById('coverage-label');
+    const submitBtn  = document.getElementById('btn-submit');
 
     if (nSelected === 0 || nominal === 0 || kasPerBulan === 0) {
       covSection.style.display = 'none';
+      if (submitBtn) submitBtn.disabled = false;
       return;
     }
 
@@ -492,57 +497,70 @@
     successBox.style.display = 'none';
 
     const totalWajib = nSelected * kasPerBulan;
-    const maxBulan   = Math.floor(nominal / kasPerBulan);
     const lebih      = nominal - totalWajib;
-    const kurang     = totalWajib - nominal;
     const pct        = Math.min(100, Math.round((Math.min(nominal, totalWajib) / totalWajib) * 100));
 
     fillEl.style.width      = pct + '%';
-    fillEl.style.background = nominal >= totalWajib ? '#2e7d32' : '#e65100';
+    fillEl.style.background = nominal >= totalWajib ? '#2e7d32' : '#c62828';
 
     if (nominal > totalWajib) {
-      // Bayar lebih → kelebihan jadi donasi
       labelEl.textContent = `Semua ${nSelected} bulan tercakup + kelebihan ${formatRupiah(lebih)}`;
       labelEl.style.color = '#2e7d32';
       successBox.style.display = 'block';
       successBox.innerHTML = `
-        ✓ Semua <strong>${nSelected} bulan</strong> tercakup (${formatRupiah(totalWajib)}).<br>
-        Kelebihan <strong>${formatRupiah(lebih)}</strong> akan dicatat sebagai
+        ✓ Semua <strong>${nSelected} bulan</strong> tercakup (${formatRupiah(totalWajib)}).<br><br>
+        Kelebihan sebesar <strong>${formatRupiah(lebih)}</strong> akan dicatat sebagai
         <span style="background:#e3f2fd;color:#1565c0;padding:1px 8px;
-          border-radius:4px;font-weight:600">Donasi</span> terpisah.`;
+          border-radius:4px;font-weight:600">Donasi</span> ke kas LHO.<br><br>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;
+          padding:10px;background:#fff;border-radius:6px;border:1.5px solid #a5d6a7;margin-top:4px">
+          <input type="checkbox" id="donasi-confirm" onchange="onDonasiConfirm()"
+            style="width:16px;height:16px;margin-top:1px;flex-shrink:0;cursor:pointer;accent-color:#2e7d32">
+          <span style="font-size:13px;color:#1a1a2e;line-height:1.5">
+            Saya setuju kelebihan <strong>${formatRupiah(lebih)}</strong>
+            dicatat sebagai <strong>donasi</strong> ke kas LHO dan tidak dapat ditarik kembali.
+          </span>
+        </label>`;
+      // Disable submit sampai checkbox dicentang
+      if (submitBtn) submitBtn.disabled = true;
 
     } else if (nominal === totalWajib) {
-      // Pas
       labelEl.textContent = `Semua ${nSelected} bulan tercakup`;
       labelEl.style.color = '#2e7d32';
       successBox.style.display = 'block';
       successBox.innerHTML = `✓ Nominal pas untuk <strong>${nSelected} bulan</strong>.`;
+      if (submitBtn) submitBtn.disabled = false;
 
     } else {
-      // Bayar kurang → sebagian bulan jadi tunggakan
-      const sortedMonths = [...selectedMonths].sort();
-      const covered   = sortedMonths.slice(0, maxBulan);
-      const uncovered = sortedMonths.slice(maxBulan);
-
-      labelEl.textContent = `${maxBulan} dari ${nSelected} bulan tercakup`;
-      labelEl.style.color = '#e65100';
-
+      const maxBulan = Math.floor(nominal / kasPerBulan);
+      labelEl.textContent = 'Nominal kurang — transaksi tidak dapat diproses';
+      labelEl.style.color = '#c62828';
       warnBox.style.display = 'block';
-      warnBox.innerHTML = `
-        <strong>⚠ Nominal kurang — ${uncovered.length} bulan jadi tunggakan</strong><br>
-        Nominal ${formatRupiah(nominal)} hanya cukup untuk
-        <strong>${maxBulan} bulan</strong> (@ ${formatRupiah(kasPerBulan)}/bulan).
-        Selisih ${formatRupiah(kurang)} dicatat sebagai tunggakan.<br><br>
-        ${covered.length > 0
-          ? `Bulan ter-cover: <strong>${covered.map(p => formatPeriod(p)).join(', ')}</strong><br>
-             Tunggakan: <span style="color:#c62828;font-weight:600">
-               ${uncovered.map(p => formatPeriod(p)).join(', ')}
-             </span>`
-          : 'Nominal terlalu kecil untuk membayar bulan manapun.'}`;
+      if (maxBulan === 0) {
+        warnBox.innerHTML = `
+          <strong>✕ Nominal terlalu kecil</strong><br>
+          Minimum pembayaran adalah <strong>${formatRupiah(kasPerBulan)}</strong> (1 bulan).<br>
+          Kamu tidak bisa membayar kurang dari nominal per bulan.`;
+      } else {
+        warnBox.innerHTML = `
+          <strong>✕ Nominal kurang untuk ${nSelected} bulan yang dipilih</strong><br>
+          ${formatRupiah(nominal)} hanya cukup untuk <strong>${maxBulan} bulan</strong>
+          (@ ${formatRupiah(kasPerBulan)}/bulan).<br><br>
+          <strong>Pilihan kamu:</strong><br>
+          • Ubah nominal menjadi <strong>${formatRupiah(totalWajib)}</strong>
+            untuk semua ${nSelected} bulan, atau<br>
+          • Kurangi pilihan bulan menjadi <strong>${maxBulan} bulan</strong>
+            dan pilih bulan yang ingin diprioritaskan.`;
+      }
+      if (submitBtn) submitBtn.disabled = true;
     }
   }
 
-  function handleFileSelect(input) {
+  function onDonasiConfirm() {
+    const cb  = document.getElementById('donasi-confirm');
+    const btn = document.getElementById('btn-submit');
+    if (btn) btn.disabled = !cb?.checked;
+  }
     const file = input.files[0];
     if (!file) return;
     selectedFile = file;
@@ -584,44 +602,37 @@
 
     const totalWajib = selectedMonths.size * kasPerBulan;
 
-    // Validasi minimum: nominal harus minimal 1 bulan kas
     if (nominal < kasPerBulan) {
-      errEl.textContent = `Nominal minimum ${formatRupiah(kasPerBulan)} (1 bulan kas). ` +
-        `Kamu tidak bisa membayar kurang dari nominal per bulan.`;
+      errEl.textContent = `Minimum pembayaran ${formatRupiah(kasPerBulan)} (1 bulan). Transaksi tidak dapat diproses.`;
+      errEl.style.display = 'block'; return;
+    }
+    if (nominal < totalWajib) {
+      errEl.textContent = `Nominal kurang untuk ${selectedMonths.size} bulan yang dipilih. Kurangi pilihan bulan atau tambah nominal menjadi ${formatRupiah(totalWajib)}.`;
       errEl.style.display = 'block'; return;
     }
 
-    // Kalau nominal tidak cukup untuk semua bulan yang dipilih
-    const maxBulan  = Math.floor(nominal / kasPerBulan);
-    if (maxBulan < selectedMonths.size) {
-      // Konfirmasi dulu sebelum submit sebagian
-      const sortedMonths  = [...selectedMonths].sort();
-      const coveredMonths = sortedMonths.slice(0, maxBulan);
-      const uncovered     = sortedMonths.slice(maxBulan);
-      const konfirm = confirm(
-        `Nominal ${formatRupiah(nominal)} hanya cukup untuk ${maxBulan} bulan.\n\n` +
-        `Bulan yang akan dibayar: ${coveredMonths.map(p => formatPeriod(p)).join(', ')}\n` +
-        `Tunggakan: ${uncovered.map(p => formatPeriod(p)).join(', ')}\n\n` +
-        `Lanjutkan?`
-      );
-      if (!konfirm) return;
-    }
+    const sortedMonths = [...selectedMonths].sort();
+    const lebih        = nominal - totalWajib;
+    const adaDonasi    = lebih > 0;
 
-    const sortedMonths  = [...selectedMonths].sort();
-    const coveredMonths = sortedMonths.slice(0, maxBulan);
-    const uncovered     = sortedMonths.slice(maxBulan);
-    const lebih         = nominal - (coveredMonths.length * kasPerBulan);
-    const adaDonasi     = lebih > 0;
-    const adaTunggakan  = uncovered.length > 0;
+    if (adaDonasi) {
+      const ok = confirm(
+        `Nominal ${formatRupiah(nominal)} melebihi total kas ${formatRupiah(totalWajib)}.
+
+` +
+        `Kelebihan ${formatRupiah(lebih)} akan dicatat sebagai DONASI ke kas LHO.
+
+Lanjutkan?`
+      );
+      if (!ok) return;
+    }
 
     setLoading(btn, true, 'Mengunggah bukti...');
     try {
-      // Upload bukti sekali — dipakai semua record
       const uploaded = await uploadBukti(selectedFile, 'kas', profile.full_name);
       btn.innerHTML = '<span class="spinner"></span>Menyimpan...';
 
-      // 1. Submit record kas per bulan yang ter-cover
-      await Promise.all(coveredMonths.map(period =>
+      await Promise.all(sortedMonths.map(period =>
         submitPayment({
           type:           'kas',
           period:         period,
@@ -632,23 +643,16 @@
         })
       ));
 
-      // 2. Kelebihan → record donasi di payments (terhubung ke member)
-      //    sekaligus record di transactions (masuk laporan keuangan)
       if (adaDonasi) {
-        const donasiTitle = `Donasi dari ${profile.full_name} ` +
-          `(kelebihan kas ${coveredMonths.map(p => formatPeriod(p)).join(', ')})`;
-
-        // Record di payments (riwayat member)
+        const donasiTitle = `Donasi dari ${profile.full_name} (kelebihan kas ${sortedMonths.map(p => formatPeriod(p)).join(', ')})`;
         await submitPayment({
           type:           'donasi',
           title:          donasiTitle,
           amount:         lebih,
-          notes:          `Kelebihan dari pembayaran kas ${coveredMonths.length} bulan`,
+          notes:          `Kelebihan dari pembayaran kas ${sortedMonths.length} bulan`,
           proof_url:      uploaded.url,
           proof_filename: uploaded.fileName,
         });
-
-        // Record di transactions (laporan keuangan admin)
         await insertTransaction({
           type:             'pemasukan',
           category:         'Donasi',
@@ -659,13 +663,11 @@
         });
       }
 
-      // 3. Susun pesan sukses
-      let msg = `Pembayaran berhasil untuk ${coveredMonths.length} bulan: ` +
-        coveredMonths.map(p => formatPeriod(p)).join(', ') + '.';
-      if (adaDonasi)    msg += ` Kelebihan ${formatRupiah(lebih)} dicatat sebagai donasi.`;
-      if (adaTunggakan) msg += ` Sisa ${uncovered.length} bulan masih jadi tunggakan.`;
+      let msg = `Pembayaran berhasil untuk ${sortedMonths.length} bulan: ` +
+        sortedMonths.map(p => formatPeriod(p)).join(', ') + '.';
+      if (adaDonasi) msg += ` Kelebihan ${formatRupiah(lebih)} dicatat sebagai donasi.`;
 
-      showToast(msg, !adaTunggakan ? 'success' : 'warning');
+      showToast(msg, 'success');
       selectedMonths.clear();
       document.getElementById('kas-amount').value = '';
       document.getElementById('kas-notes').value  = '';
@@ -673,7 +675,7 @@
       clearFile();
       await loadHistory();
       renderMonthGrid();
-      loadTunggakan(); // refresh info tunggakan
+      await loadTunggakan();
 
     } catch(err) {
       errEl.textContent = err.message;
