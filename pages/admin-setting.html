@@ -19,7 +19,7 @@
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="setting-grid">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px" id="setting-grid">
 
       <!-- Pengaturan kas -->
       <div class="card">
@@ -47,8 +47,46 @@
         </button>
       </div>
 
-      <!-- Info sistem -->
+      <!-- Pengaturan rekening pembayaran -->
       <div class="card">
+        <div class="card-header"><h3>Rekening Pembayaran Kas</h3></div>
+
+        <div class="form-group">
+          <label>Nama Bank</label>
+          <input type="text" id="bank-name" placeholder="Contoh: BCA, BRI, Mandiri">
+        </div>
+
+        <div class="form-group">
+          <label>Nomor Rekening <span style="color:#c62828">*</span></label>
+          <input type="text" id="account-no" placeholder="Contoh: 1234567890">
+        </div>
+
+        <div class="form-group">
+          <label>Nama Pemilik Rekening <span style="color:#c62828">*</span></label>
+          <input type="text" id="account-name" placeholder="Nama sesuai rekening bank">
+          <div class="form-hint">
+            Akan ditampilkan di halaman pembayaran kas member sebagai arahan transfer.
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;
+          padding:14px;margin-bottom:18px">
+          <div style="font-size:11px;font-weight:600;color:#1565c0;
+            text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+            Preview tampilan di form member:
+          </div>
+          <div style="font-size:16px;font-weight:700;color:#1a1a2e" id="preview-no">—</div>
+          <div style="font-size:13px;color:#555;margin-top:2px">
+            <span id="preview-bank" style="font-weight:600"></span>
+            · a.n. <span id="preview-name"></span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-save-rekening" onclick="saveRekening()">
+          Simpan Rekening
+        </button>
+      </div>
         <div class="card-header"><h3>Informasi Sistem</h3></div>
 
         <div style="display:flex;flex-direction:column;gap:14px">
@@ -125,16 +163,21 @@
         .select('*')
         .order('updated_at', { ascending: false });
 
-      const kasAmount = data.find(s => s.key === 'kas_amount');
-      const kasDueDay = data.find(s => s.key === 'kas_due_day');
+      const s = {};
+      data.forEach(r => s[r.key] = r.value);
 
-      if (kasAmount) document.getElementById('kas-amount').value = kasAmount.value;
-      if (kasDueDay) document.getElementById('kas-due-day').value = kasDueDay.value;
+      if (s.kas_amount)  document.getElementById('kas-amount').value  = s.kas_amount;
+      if (s.kas_due_day) document.getElementById('kas-due-day').value = s.kas_due_day;
 
-      // Tampilkan log semua settings
+      // Isi form rekening
+      if (s.payment_bank_name)    document.getElementById('bank-name').value    = s.payment_bank_name;
+      if (s.payment_account_no)   document.getElementById('account-no').value   = s.payment_account_no;
+      if (s.payment_account_name) document.getElementById('account-name').value = s.payment_account_name;
+      updatePreview();
+
+      // Log settings
       const el = document.getElementById('settings-log');
-      const kasHistory = data.filter(s => s.key === 'kas_amount' || s.key === 'kas_due_day');
-      if (kasHistory.length === 0) {
+      if (data.length === 0) {
         el.innerHTML = `<div class="empty-state"><div class="empty-text">Belum ada perubahan</div></div>`;
         return;
       }
@@ -143,16 +186,69 @@
           <table>
             <thead><tr><th>Setting</th><th>Nilai</th><th>Terakhir Diubah</th></tr></thead>
             <tbody>
-              ${data.map(s => `
+              ${data.map(r => `
               <tr>
-                <td style="font-size:13px;font-family:monospace">${s.key}</td>
-                <td style="font-weight:600">${s.key==='kas_amount' ? formatRupiah(s.value) : s.value}</td>
-                <td style="font-size:13px;color:#888">${formatDate(s.updated_at)}</td>
+                <td style="font-size:13px;font-family:monospace">${r.key}</td>
+                <td style="font-weight:600">${r.key==='kas_amount' ? formatRupiah(r.value) : r.value}</td>
+                <td style="font-size:13px;color:#888">${formatDate(r.updated_at)}</td>
               </tr>`).join('')}
             </tbody>
           </table>
         </div>`;
     } catch(err) { showToast(err.message, 'error'); }
+  }
+
+  function updatePreview() {
+    const no   = document.getElementById('account-no').value.trim();
+    const bank = document.getElementById('bank-name').value.trim();
+    const name = document.getElementById('account-name').value.trim();
+    document.getElementById('preview-no').textContent   = no   || '—';
+    document.getElementById('preview-bank').textContent = bank || '';
+    document.getElementById('preview-name').textContent = name || '';
+  }
+
+  // Bind live preview
+  ['bank-name','account-no','account-name'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', updatePreview);
+  });
+
+  async function saveRekening() {
+    const bankName   = document.getElementById('bank-name').value.trim();
+    const accountNo  = document.getElementById('account-no').value.trim();
+    const accountName = document.getElementById('account-name').value.trim();
+    const btn        = document.getElementById('btn-save-rekening');
+
+    if (!accountNo || !accountName) {
+      showToast('Nomor rekening dan nama pemilik wajib diisi.', 'warning'); return;
+    }
+
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      await Promise.all([
+        upsertSetting('payment_bank_name',    bankName),
+        upsertSetting('payment_account_no',   accountNo),
+        upsertSetting('payment_account_name', accountName),
+      ]);
+      showToast('Info rekening berhasil disimpan!', 'success');
+      await loadSettings();
+    } catch(err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Simpan Rekening');
+    }
+  }
+
+  async function upsertSetting(key, value) {
+    const profile = await getCurrentProfile();
+    const { error } = await getSupabase()
+      .from('settings')
+      .upsert({
+        key,
+        value,
+        updated_by: profile.id,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'key' });
+    if (error) throw error;
   }
 
   async function saveKas() {
@@ -172,8 +268,8 @@
         setLoading(btn, true, 'Menyimpan...');
         try {
           await Promise.all([
-            updateSetting('kas_amount', amount),
-            updateSetting('kas_due_day', dueDay),
+            upsertSetting('kas_amount', amount),
+            upsertSetting('kas_due_day', dueDay),
           ]);
           showToast('Pengaturan kas berhasil disimpan!', 'success');
           await loadSettings();
@@ -216,7 +312,8 @@
 
   function checkGrid() {
     const g = document.getElementById('setting-grid');
-    if (g) g.style.gridTemplateColumns = window.innerWidth < 700 ? '1fr' : '1fr 1fr';
+    if (g) g.style.gridTemplateColumns =
+      window.innerWidth < 900 ? '1fr' : '1fr 1fr 1fr';
   }
   window.addEventListener('resize', checkGrid);
   checkGrid();
