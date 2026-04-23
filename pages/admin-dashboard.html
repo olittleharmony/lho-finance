@@ -50,7 +50,11 @@
       <div class="card">
         <div class="card-header">
           <h3>Perlu Tindakan</h3>
-          <span id="task-badge" style="background:#c62828;color:#fff;border-radius:20px;padding:2px 10px;font-size:12px;display:none">0</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="task-badge" style="background:#c62828;color:#fff;border-radius:20px;
+              padding:2px 10px;font-size:12px;display:none">0</span>
+            <a href="admin-validasi.html" class="btn btn-ghost btn-sm">Lihat Semua</a>
+          </div>
         </div>
         <div id="task-list" class="task-list">
           <div class="empty-state"><div class="spinner spinner-dark"></div></div>
@@ -98,6 +102,55 @@
   </div>
 </div>
 
+<!-- Modal Preview Validasi -->
+<div id="preview-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:flex-start;justify-content:center;
+  padding:24px;overflow-y:auto">
+  <div style="background:#fff;border-radius:12px;width:100%;max-width:680px;
+    margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+
+    <!-- Header modal -->
+    <div style="padding:20px 24px;border-bottom:1px solid #f0f0f0;
+      display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h3 id="modal-title" style="margin:0;font-size:16px">Antrian Validasi</h3>
+        <div id="modal-subtitle" style="font-size:13px;color:#888;margin-top:2px"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a id="modal-full-link" href="admin-validasi.html"
+          class="btn btn-ghost btn-sm">Buka Halaman Penuh ↗</a>
+        <button onclick="closePreviewModal()"
+          style="background:none;border:none;font-size:20px;cursor:pointer;
+            color:#888;line-height:1;padding:4px">✕</button>
+      </div>
+    </div>
+
+    <!-- Konten list -->
+    <div id="modal-content" style="padding:20px 24px;max-height:70vh;overflow-y:auto">
+      <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal reject (reuse dari validasi) -->
+<div id="dash-reject-modal" style="display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,0.6);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;max-width:440px;width:100%">
+    <h3 style="margin-bottom:14px;color:#c62828">Tolak Transaksi</h3>
+    <p style="font-size:14px;margin-bottom:14px" id="dash-reject-desc"></p>
+    <div class="form-group">
+      <label>Alasan penolakan <span style="color:#c62828">*</span></label>
+      <textarea id="dash-reject-notes" rows="3"
+        placeholder="Jelaskan alasan penolakan..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeDashReject()">Batal</button>
+      <button class="btn btn-danger" id="btn-dash-reject"
+        onclick="confirmDashReject()">Tolak</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 <script src="../js/config.js"></script>
 <script src="../js/supabase.js"></script>
@@ -105,15 +158,204 @@
 <script src="../js/gas.js"></script>
 <script>
   let profile = null;
+  let dashRejectTarget = null;
+  let currentFilterType = '';
 
   async function init() {
     profile = await requireAuth('admin');
     if (!profile) return;
-    document.getElementById('navbar-container').innerHTML = renderNavbar(profile, 'admin-dashboard');
-    document.getElementById('greeting').textContent = `Halo, ${profile.full_name.split(' ')[0]}!`;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-dashboard');
+    document.getElementById('greeting').textContent =
+      `Halo, ${profile.full_name.split(' ')[0]}!`;
     document.getElementById('period-label').textContent =
       `Periode aktif: ${formatPeriod(currentPeriod())}`;
     await refreshAll();
+  }
+
+  async function refreshAll() {
+    await Promise.all([loadBalance(), loadTasks(), loadKasCompliance(), loadRecentPayments()]);
+  }
+
+  // ---- Preview Modal ----
+  async function openTaskPreview(filterType) {
+    currentFilterType = filterType;
+    const labels = { kas:'Kas Bulanan', reimburse:'Reimburse', donasi:'Donasi', '':'Semua' };
+    document.getElementById('modal-title').textContent =
+      `Antrian Validasi — ${labels[filterType] || filterType}`;
+    document.getElementById('modal-subtitle').textContent =
+      'Klik Konfirmasi atau Tolak untuk memvalidasi langsung';
+    document.getElementById('modal-full-link').href =
+      `admin-validasi.html${filterType ? '?filter='+filterType : ''}`;
+    document.getElementById('preview-modal').style.display = 'flex';
+    document.getElementById('modal-content').innerHTML =
+      `<div class="empty-state"><div class="spinner spinner-dark"></div></div>`;
+
+    try {
+      const payments = await getAllPayments({ status: 'pending',
+        ...(filterType ? { type: filterType } : {}) });
+      renderModalContent(payments);
+    } catch(err) {
+      document.getElementById('modal-content').innerHTML =
+        `<div class="empty-state"><div class="empty-text">${err.message}</div></div>`;
+    }
+  }
+
+  function closePreviewModal() {
+    document.getElementById('preview-modal').style.display = 'none';
+  }
+
+  // Tutup modal kalau klik backdrop
+  document.getElementById('preview-modal').addEventListener('click', function(e) {
+    if (e.target === this) closePreviewModal();
+  });
+
+  function renderModalContent(payments) {
+    const el = document.getElementById('modal-content');
+    if (payments.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">✓</div>
+        <div class="empty-text">Tidak ada transaksi pending</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = payments.map(p => {
+      const member = p.profiles || {};
+      return `
+      <div style="border:1px solid #e0e0e0;border-radius:10px;padding:16px;
+        margin-bottom:12px">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+
+          <!-- Info -->
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+              ${typeBadge(p.type)} ${statusBadge(p.status)}
+            </div>
+            <div style="font-size:16px;font-weight:700;color:#1a1a2e">
+              ${formatRupiah(p.amount)}
+            </div>
+            <div style="font-size:13px;color:#555;margin-top:2px">
+              <strong>${member.full_name || '—'}</strong>
+              ${member.division ? ' · ' + member.division : ''}
+            </div>
+            <div style="font-size:13px;color:#888;margin-top:2px">
+              ${p.type === 'kas' ? 'Kas ' + formatPeriod(p.period)
+                : p.title || '—'}
+            </div>
+            <div style="font-size:12px;color:#aaa;margin-top:4px">
+              Dikirim: ${formatDate(p.created_at)}
+            </div>
+            ${p.notes ? `<div style="font-size:12px;color:#666;margin-top:4px;
+              font-style:italic">"${p.notes}"</div>` : ''}
+          </div>
+
+          <!-- Aksi -->
+          <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0">
+            ${p.proof_url
+              ? `<a href="${p.proof_url}" target="_blank"
+                  class="btn btn-ghost btn-sm">Lihat Bukti ↗</a>`
+              : ''}
+            <button class="btn btn-success btn-sm"
+              id="dash-confirm-${p.id}"
+              onclick="dashConfirm('${p.id}', '${p.type}')">
+              ✓ Konfirmasi
+            </button>
+            <button class="btn btn-danger btn-sm"
+              onclick="openDashReject('${p.id}',
+                '${(member.full_name||'').replace(/'/g,"\\'")}',
+                '${p.type}')">
+              ✕ Tolak
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function dashConfirm(paymentId, type) {
+    const btn = document.getElementById(`dash-confirm-${paymentId}`);
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const result = await reviewPayment(paymentId, 'confirmed', '');
+      const member = result.profiles || {};
+
+      // Insert ke transactions jika kas/donasi
+      if (result.type === 'kas' || result.type === 'donasi') {
+        try {
+          await insertTransaction({
+            type:             'pemasukan',
+            category:         result.type === 'kas' ? 'Kas Bulanan' : 'Donasi',
+            title:            result.type === 'kas'
+              ? `Kas ${formatPeriod(result.period)} — ${member.full_name}`
+              : result.title || `Donasi — ${member.full_name}`,
+            amount:           result.amount,
+            transaction_date: new Date().toISOString().split('T')[0],
+            notes:            `Dikonfirmasi dari payment ID: ${result.id}`,
+          });
+        } catch(e) { console.warn('Insert transactions gagal:', e.message); }
+      }
+
+      // Kirim notif email
+      const notifType = result.type === 'reimburse' ? 'reimburse_approved' : 'kas_confirmed';
+      try {
+        await sendNotification(notifType, member.email, member.full_name, {
+          period: result.period, amount: result.amount, title: result.title,
+          confirmedAt: formatDate(result.reviewed_at),
+          confirmedBy: profile.full_name, appUrl: APP_CONFIG.APP_URL,
+        });
+      } catch(e) { console.warn('Email gagal:', e.message); }
+
+      showToast('Dikonfirmasi!', 'success');
+      // Refresh modal dan dashboard
+      await openTaskPreview(currentFilterType);
+      await refreshAll();
+    } catch(err) {
+      showToast(err.message, 'error');
+      setLoading(btn, false, '✓ Konfirmasi');
+    }
+  }
+
+  function openDashReject(paymentId, memberName, type) {
+    dashRejectTarget = { paymentId, memberName, type };
+    document.getElementById('dash-reject-desc').textContent =
+      `Tolak ${type === 'kas' ? 'pembayaran kas'
+        : type === 'donasi' ? 'donasi'
+        : 'reimburse'} dari ${memberName}?`;
+    document.getElementById('dash-reject-notes').value = '';
+    document.getElementById('dash-reject-modal').style.display = 'flex';
+  }
+
+  function closeDashReject() {
+    document.getElementById('dash-reject-modal').style.display = 'none';
+    dashRejectTarget = null;
+  }
+
+  async function confirmDashReject() {
+    const notes = document.getElementById('dash-reject-notes').value.trim();
+    if (!notes) { showToast('Alasan wajib diisi.', 'warning'); return; }
+    const btn = document.getElementById('btn-dash-reject');
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const result = await reviewPayment(dashRejectTarget.paymentId, 'rejected', notes);
+      const member = result.profiles || {};
+      const notifType = result.type === 'reimburse' ? 'reimburse_rejected' : 'kas_rejected';
+      try {
+        await sendNotification(notifType, member.email, member.full_name, {
+          period: result.period, amount: result.amount,
+          title: result.title, reviewNotes: notes,
+          appUrl: APP_CONFIG.APP_URL,
+        });
+      } catch(e) { console.warn('Email gagal:', e.message); }
+      showToast('Transaksi ditolak.', 'info');
+      closeDashReject();
+      await openTaskPreview(currentFilterType);
+      await refreshAll();
+    } catch(err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Tolak');
+    }
   }
 
   async function refreshAll() {
@@ -140,24 +382,21 @@
       const donasiPending = payments.filter(p => p.type === 'donasi');
 
       if (kasPending.length > 0) tasks.push({
-        type: 'urgent',
+        type: 'urgent', filterType: 'kas',
         title: `${kasPending.length} pembayaran kas menunggu`,
         sub: 'Perlu konfirmasi atau reject',
-        href: 'admin-validasi.html?filter=kas',
         action: 'Validasi',
       });
       if (reimPending.length > 0) tasks.push({
-        type: 'urgent',
+        type: 'urgent', filterType: 'reimburse',
         title: `${reimPending.length} pengajuan reimburse menunggu`,
         sub: 'Perlu persetujuan atau penolakan',
-        href: 'admin-validasi.html?filter=reimburse',
         action: 'Review',
       });
       if (donasiPending.length > 0) tasks.push({
-        type: 'info',
+        type: 'info', filterType: 'donasi',
         title: `${donasiPending.length} donasi member menunggu`,
         sub: 'Kelebihan pembayaran kas dari member',
-        href: 'admin-validasi.html?filter=donasi',
         action: 'Konfirmasi',
       });
 
@@ -173,13 +412,14 @@
         return;
       }
       el.innerHTML = tasks.map(t => `
-        <div class="task-item ${t.type}">
+        <div class="task-item ${t.type}" style="cursor:pointer"
+          onclick="openTaskPreview('${t.filterType}')">
           <div class="task-dot"></div>
           <div class="task-body">
             <div class="task-title">${t.title}</div>
             <div class="task-sub">${t.sub}</div>
           </div>
-          <a href="${t.href}" class="btn btn-sm btn-primary">${t.action}</a>
+          <span class="btn btn-sm btn-primary">${t.action}</span>
         </div>
       `).join('');
     } catch(err) { console.error(err); }
