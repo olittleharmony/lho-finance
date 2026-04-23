@@ -33,6 +33,7 @@
             <option value="">Semua</option>
             <option value="kas">Kas Bulanan</option>
             <option value="reimburse">Reimburse</option>
+            <option value="donasi">Donasi</option>
           </select>
         </div>
         <div class="form-group">
@@ -212,10 +213,33 @@
     setLoading(btn, true, 'Menyimpan...');
     try {
       const result = await reviewPayment(paymentId, 'confirmed', '');
+      const member = result.profiles || {};
+
+      // Kalau kas atau donasi dikonfirmasi → masuk ke transactions sebagai pemasukan
+      if (result.type === 'kas' || result.type === 'donasi') {
+        try {
+          const title = result.type === 'kas'
+            ? `Kas ${formatPeriod(result.period)} — ${member.full_name}`
+            : result.title || `Donasi — ${member.full_name}`;
+
+          await insertTransaction({
+            type:             'pemasukan',
+            category:         result.type === 'kas' ? 'Kas Bulanan' : 'Donasi',
+            title:            title,
+            amount:           result.amount,
+            transaction_date: new Date().toISOString().split('T')[0],
+            notes:            `Dikonfirmasi dari payment ID: ${result.id}`,
+          });
+        } catch(e) {
+          console.warn('Gagal insert transactions:', e.message);
+          // Tidak throw — konfirmasi payment tetap berhasil
+        }
+      }
 
       // Kirim notifikasi email via GAS
-      const member = result.profiles || {};
-      const notifType = result.type === 'kas' ? 'kas_confirmed' : 'reimburse_approved';
+      const notifType = result.type === 'kas'     ? 'kas_confirmed'
+                      : result.type === 'donasi'  ? 'kas_confirmed'
+                      : 'reimburse_approved';
       try {
         await sendNotification(notifType, member.email, member.full_name, {
           period:      result.period,
