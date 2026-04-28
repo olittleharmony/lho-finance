@@ -39,7 +39,10 @@ async function signIn(email, password) {
 
 async function signOut() {
   await getSupabase().auth.signOut();
-  window.location.href = 'https://olittleharmony.github.io/member/index.html';
+  const loginUrl = 'https://olittleharmony.github.io/member/index.html';
+  if (!window.location.href.includes('member/index.html')) {
+    window.location.href = loginUrl;
+  }
 }
 
 async function updatePassword(newPassword) {
@@ -59,12 +62,16 @@ function isOpsAdmin(profile) {
 // ---- Guard: redirect ke login jika belum login ----
 async function requireAuth(requiredRole = null) {
   const profile = await getCurrentProfile();
+  const loginUrl = 'https://olittleharmony.github.io/member/index.html';
+  const isLoginPage = window.location.href.includes('member/index.html');
+
   if (!profile) {
-    window.location.href = 'https://olittleharmony.github.io/member/index.html';
+    if (!isLoginPage) window.location.href = loginUrl;
     return null;
   }
   if (!profile.is_active) {
-    await signOut();
+    await getSupabase().auth.signOut();
+    if (!isLoginPage) window.location.href = loginUrl;
     return null;
   }
 
