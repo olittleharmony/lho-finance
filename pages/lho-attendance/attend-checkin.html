@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check-in LHO</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body {
+      font-family:'Inter',sans-serif;
+      background:linear-gradient(135deg,#1a1a2e 0%,#2d2d5e 100%);
+      min-height:100vh; display:flex; align-items:center;
+      justify-content:center; padding:20px;
+    }
+    .card {
+      background:#fff; border-radius:20px; padding:40px 32px;
+      max-width:420px; width:100%; text-align:center;
+      box-shadow:0 20px 60px rgba(0,0,0,0.3);
+    }
+    .logo { font-size:48px; margin-bottom:12px; }
+    .org  { font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:4px; }
+    .sub  { font-size:14px; color:#888; margin-bottom:32px; }
+    .state { display:none; }
+    .state.active { display:block; }
+    .result-icon  { font-size:64px; margin-bottom:16px; }
+    .result-title { font-size:22px; font-weight:700; margin-bottom:8px; }
+    .result-msg   { font-size:14px; color:#666; margin-bottom:8px; line-height:1.6; }
+    .result-session {
+      background:#f0f4ff; border-radius:10px; padding:14px 16px;
+      margin:16px 0; text-align:left;
+    }
+    .result-session .s-title { font-size:15px; font-weight:600; color:#1a1a2e; }
+    .result-session .s-meta  { font-size:12px; color:#888; margin-top:4px; }
+    .time-badge {
+      background:#e8f5e9; color:#2e7d32; border-radius:20px;
+      padding:4px 14px; font-size:13px; font-weight:600;
+      display:inline-block; margin-top:8px;
+    }
+    .spinner {
+      width:32px; height:32px; border:3px solid #e0e0e0;
+      border-top-color:#1a1a2e; border-radius:50%;
+      animation:spin .8s linear infinite; margin:0 auto 16px;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .btn {
+      display:inline-block; padding:12px 28px; border:none;
+      border-radius:10px; font-size:14px; font-weight:600;
+      font-family:inherit; cursor:pointer; text-decoration:none;
+      transition:all .15s; margin-top:16px;
+    }
+    .btn-primary { background:#1a1a2e; color:#fff; }
+    .btn-primary:hover { background:#2d2d5e; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🎵</div>
+  <div class="org">Little Harmony Orchestra</div>
+  <div class="sub">Sistem Absensi</div>
+
+  <div class="state active" id="state-loading">
+    <div class="spinner"></div>
+    <div style="color:#888;font-size:14px">Memproses check-in...</div>
+  </div>
+
+  <div class="state" id="state-success">
+    <div class="result-icon">✅</div>
+    <div class="result-title" style="color:#2e7d32" id="s-title"></div>
+    <div class="result-msg">Kehadiran kamu sudah tercatat.</div>
+    <div class="result-session" id="s-session"></div>
+    <div class="time-badge" id="s-time"></div><br>
+    <a href="https://olittleharmony.github.io/member/hub.html" class="btn btn-primary">Kembali ke Menu</a>
+  </div>
+
+  <div class="state" id="state-already">
+    <div class="result-icon">👋</div>
+    <div class="result-title" style="color:#1565c0">Sudah Check-in</div>
+    <div class="result-msg" id="a-msg"></div>
+    <div class="result-session" id="a-session"></div>
+    <div class="time-badge" id="a-time"></div><br>
+    <a href="https://olittleharmony.github.io/member/hub.html" class="btn btn-primary">Kembali ke Menu</a>
+  </div>
+
+  <div class="state" id="state-error">
+    <div class="result-icon">❌</div>
+    <div class="result-title" style="color:#c62828">Gagal Check-in</div>
+    <div class="result-msg" id="e-msg"></div>
+    <a href="https://olittleharmony.github.io/member/hub.html" class="btn btn-primary">Kembali ke Menu</a>
+  </div>
+
+  <div class="state" id="state-login">
+    <div class="result-icon">🔐</div>
+    <div class="result-title" style="color:#1a1a2e">Belum Login</div>
+    <div class="result-msg">
+      Login dulu untuk check-in absensi.<br>
+      Setelah login kamu akan otomatis diarahkan kembali ke halaman ini.
+    </div>
+    <a id="login-link" href="" class="btn btn-primary">Login Sekarang</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script>
+  const SUPABASE_URL      = 'https://tovitqcgmsmohbjmaifk.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvdml0cWNnbXNtb2hiam1haWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NTk3NzksImV4cCI6MjA5MjMzNTc3OX0.m8PsmN_B6XnI5IHx_n-_sBPUy4g_Es8uX8-chgnlSqc';
+
+  const params   = new URLSearchParams(window.location.search);
+  const QR_TOKEN = params.get('token') || 'LHO-ATTEND-2025';
+  const sb       = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  function showState(id) {
+    document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('id-ID', {
+      weekday:'long', day:'numeric', month:'long', year:'numeric'
+    });
+  }
+
+  function renderSession(session) {
+    if (!session) return '';
+    return `
+      <div class="s-title">${session.title || '—'}</div>
+      <div class="s-meta">
+        📅 ${formatDate(session.date)}
+        ${session.start_time ? ' · ⏰ ' + session.start_time.slice(0,5) : ''}
+        ${session.location   ? ' · 📍 ' + session.location : ''}
+      </div>`;
+  }
+
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+
+    if (!session) {
+      // Simpan return URL dan redirect ke login terpusat
+      const returnUrl = window.location.href;
+      localStorage.setItem('lho_checkin_return', returnUrl);
+      document.getElementById('login-link').href =
+        'https://olittleharmony.github.io/member/index.html';
+      showState('state-login');
+      return;
+    }
+
+    await doCheckin(session.user.id);
+  }
+
+  async function doCheckin(userId) {
+    try {
+      const { data, error } = await sb.rpc('checkin_via_qr', {
+        p_qr_token: QR_TOKEN,
+        p_user_id:  userId,
+      });
+      if (error) throw new Error(error.message);
+
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+
+      if (!result.success) {
+        showState('state-error');
+        document.getElementById('e-msg').textContent = result.message;
+        return;
+      }
+
+      if (result.already) {
+        showState('state-already');
+        document.getElementById('a-msg').textContent       = result.message;
+        document.getElementById('a-session').innerHTML     = renderSession(result.session);
+        document.getElementById('a-time').textContent      = 'Check-in: ' + formatTime(result.check_in_time);
+        return;
+      }
+
+      showState('state-success');
+      document.getElementById('s-title').textContent   = result.message;
+      document.getElementById('s-session').innerHTML   = renderSession(result.session);
+      document.getElementById('s-time').textContent    = 'Jam masuk: ' + formatTime(result.check_in_time);
+      localStorage.removeItem('lho_checkin_return');
+
+    } catch(err) {
+      showState('state-error');
+      document.getElementById('e-msg').textContent = err.message;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>

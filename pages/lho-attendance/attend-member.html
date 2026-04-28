@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absensi Saya — LHO</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://olittleharmony.github.io/lho-finance/css/style.css">
+  <style>
+    .status-badge {
+      padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600;
+    }
+    .badge-hadir  { background:#e8f5e9; color:#2e7d32; }
+    .badge-izin   { background:#e3f2fd; color:#1565c0; }
+    .badge-sakit  { background:#fff3e0; color:#e65100; }
+    .badge-alpha  { background:#ffebee; color:#c62828; }
+    .badge-open   { background:#e8f5e9; color:#2e7d32; }
+    .badge-closed { background:#f5f5f5; color:#888; }
+    .session-card {
+      border:1.5px solid #e0e0e0; border-radius:10px; padding:16px;
+      margin-bottom:10px; transition:border-color .15s;
+    }
+    .session-card:hover { border-color:#1a1a2e; }
+    .pct-bar {
+      height:8px; background:#e0e0e0; border-radius:99px; overflow:hidden; margin-top:6px;
+    }
+    .pct-fill { height:100%; border-radius:99px; transition:width .4s; }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Absensi Saya</h1>
+        <p>Riwayat kehadiran dan pengajuan izin</p>
+      </div>
+      <button class="btn btn-primary" onclick="openLeaveModal()">
+        + Ajukan Izin
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stat-grid" style="margin-bottom:24px">
+      <div class="stat-card green">
+        <div class="stat-label">Hadir</div>
+        <div class="stat-value" id="st-hadir">—</div>
+        <div class="stat-sub" id="st-hadir-sub"></div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">Izin</div>
+        <div class="stat-value" id="st-izin">—</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-label">Sakit</div>
+        <div class="stat-value" id="st-sakit">—</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-label">Alpha</div>
+        <div class="stat-value" id="st-alpha">—</div>
+      </div>
+    </div>
+
+    <!-- Progress kehadiran -->
+    <div class="card" style="margin-bottom:20px" id="progress-card">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+        <span>Persentase Kehadiran</span>
+        <span id="pct-label" style="font-weight:700"></span>
+      </div>
+      <div class="pct-bar">
+        <div class="pct-fill" id="pct-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="main-grid">
+
+      <!-- Sesi mendatang & aktif -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Sesi Mendatang</h3>
+        </div>
+        <div id="upcoming-sessions">
+          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+        </div>
+      </div>
+
+      <!-- Riwayat absensi -->
+      <div class="card">
+        <div class="card-header">
+          <h3>Riwayat Kehadiran</h3>
+          <select id="filter-month" onchange="loadHistory()"
+            style="font-size:13px;padding:4px 8px">
+          </select>
+        </div>
+        <div id="attendance-history">
+          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal ajukan izin -->
+<div id="leave-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;
+    max-width:460px;width:100%">
+    <h3 style="margin-bottom:16px">Ajukan Izin Tidak Hadir</h3>
+    <div class="form-group">
+      <label>Pilih Sesi <span style="color:#c62828">*</span></label>
+      <select id="leave-session" style="width:100%">
+        <option value="">— Pilih sesi —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Alasan <span style="color:#c62828">*</span></label>
+      <textarea id="leave-reason" placeholder="Jelaskan alasan tidak hadir..."
+        rows="3"></textarea>
+    </div>
+    <div id="leave-error" style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeLeaveModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-leave" onclick="submitLeave()">
+        Kirim Izin
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal check-in app -->
+<div id="checkin-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;
+    max-width:400px;width:100%;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">🎵</div>
+    <h3 id="ci-title" style="margin-bottom:8px"></h3>
+    <p id="ci-desc" style="font-size:13px;color:#666;margin-bottom:20px"></p>
+    <div id="ci-error" style="display:none;background:#ffebee;border-radius:8px;
+      padding:10px 14px;color:#c62828;font-size:13px;margin-bottom:16px"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-ghost" onclick="closeCheckinModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-checkin" onclick="confirmCheckin()">
+        ✓ Konfirmasi Hadir
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://olittleharmony.github.io/lho-finance/js/config.js"></script>
+<script src="https://olittleharmony.github.io/lho-finance/js/supabase.js"></script>
+<script src="https://olittleharmony.github.io/lho-finance/js/ui.js"></script>
+<script>
+  let profile     = null;
+  let upcomingSessions = [];
+  let checkinTarget = null;
+
+  const MONTHS_FULL = ['Januari','Februari','Maret','April','Mei','Juni',
+                       'Juli','Agustus','September','Oktober','November','Desember'];
+
+  async function init() {
+    profile = await requireAuth();
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'absensi');
+
+    // Populate filter bulan
+    const sel = document.getElementById('filter-month');
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d   = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      sel.innerHTML += `<option value="${val}" ${i===0?'selected':''}>
+        ${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}</option>`;
+    }
+
+    await Promise.all([loadUpcoming(), loadHistory(), loadStats()]);
+  }
+
+  async function loadStats() {
+    const { data } = await getSupabase()
+      .from('attendance')
+      .select('status')
+      .eq('user_id', profile.id);
+
+    const counts = { hadir:0, izin:0, sakit:0, alpha:0 };
+    (data||[]).forEach(a => counts[a.status] = (counts[a.status]||0) + 1);
+    const total = Object.values(counts).reduce((s,v)=>s+v, 0);
+    const pct   = total > 0 ? Math.round((counts.hadir/total)*100) : 0;
+
+    document.getElementById('st-hadir').textContent      = counts.hadir;
+    document.getElementById('st-hadir-sub').textContent  = `dari ${total} sesi`;
+    document.getElementById('st-izin').textContent       = counts.izin;
+    document.getElementById('st-sakit').textContent      = counts.sakit;
+    document.getElementById('st-alpha').textContent      = counts.alpha;
+    document.getElementById('pct-label').textContent     = pct + '%';
+    document.getElementById('pct-fill').style.width      = pct + '%';
+    document.getElementById('pct-fill').style.background =
+      pct >= 80 ? '#2e7d32' : pct >= 60 ? '#c9a84c' : '#c62828';
+  }
+
+  async function loadUpcoming() {
+    const today = new Date().toISOString().split('T')[0];
+    const { data } = await getSupabase()
+      .from('sessions')
+      .select('*')
+      .gte('date', today)
+      .order('date', { ascending: true })
+      .limit(5);
+
+    upcomingSessions = data || [];
+    const el = document.getElementById('upcoming-sessions');
+
+    // Populate pilihan sesi di modal izin
+    const sel = document.getElementById('leave-session');
+    sel.innerHTML = '<option value="">— Pilih sesi —</option>';
+    upcomingSessions.forEach(s => {
+      sel.innerHTML += `<option value="${s.id}">${s.title} — ${formatDateOnly(s.date)}</option>`;
+    });
+
+    if (upcomingSessions.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📅</div>
+        <div class="empty-text">Belum ada sesi mendatang</div>
+      </div>`;
+      return;
+    }
+
+    // Cek status member di tiap sesi
+    const sessionIds = upcomingSessions.map(s => s.id);
+    const [attendRes, leaveRes] = await Promise.all([
+      getSupabase().from('attendance').select('session_id,status')
+        .eq('user_id', profile.id).in('session_id', sessionIds),
+      getSupabase().from('leave_requests').select('session_id')
+        .eq('user_id', profile.id).in('session_id', sessionIds),
+    ]);
+
+    const attendMap = {};
+    (attendRes.data||[]).forEach(a => attendMap[a.session_id] = a.status);
+    const leaveSet = new Set((leaveRes.data||[]).map(l => l.session_id));
+
+    el.innerHTML = upcomingSessions.map(s => {
+      const myStatus = attendMap[s.id];
+      const hasLeave = leaveSet.has(s.id);
+      const isToday  = s.date === new Date().toISOString().split('T')[0];
+
+      return `
+      <div class="session-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px;margin-bottom:4px">
+              ${s.title}
+              ${isToday ? `<span style="background:#c9a84c;color:#1a1a2e;
+                font-size:11px;padding:1px 7px;border-radius:20px;margin-left:6px">
+                Hari ini</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:#888">
+              📅 ${formatDateOnly(s.date)}
+              ${s.start_time ? ' · ⏰ '+s.start_time.slice(0,5) : ''}
+              ${s.location   ? ' · 📍 '+s.location : ''}
+            </div>
+          </div>
+          <div>
+            ${myStatus ? `<span class="status-badge badge-${myStatus}">${myStatus}</span>`
+              : hasLeave ? `<span class="status-badge badge-izin">Izin</span>`
+              : s.checkin_open ? `<button class="btn btn-primary btn-sm"
+                  onclick="openCheckinModal('${s.id}','${s.title.replace(/'/g,"\\'")}')">
+                  Check-in</button>`
+              : `<span class="status-badge badge-closed">Belum buka</span>`}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadHistory() {
+    const month = document.getElementById('filter-month').value;
+    const from  = month + '-01';
+    const to    = month + '-31';
+
+    const { data } = await getSupabase()
+      .from('attendance')
+      .select('*, sessions(title,date,type,location)')
+      .eq('user_id', profile.id)
+      .gte('sessions.date', from)
+      .lte('sessions.date', to)
+      .order('sessions(date)', { ascending: false });
+
+    const el = document.getElementById('attendance-history');
+    if (!data || data.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <div class="empty-text">Tidak ada data bulan ini</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = data.map(a => `
+      <div style="padding:10px 0;border-bottom:1px solid #f0f0f0;
+        display:flex;align-items:center;gap:10px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">
+            ${a.sessions?.title || '—'}
+          </div>
+          <div style="font-size:12px;color:#888">
+            ${formatDateOnly(a.sessions?.date)}
+            ${a.check_in_time
+              ? ' · ' + new Date(a.check_in_time).toLocaleTimeString('id-ID',
+                  {hour:'2-digit',minute:'2-digit'})
+              : ''}
+          </div>
+        </div>
+        <span class="status-badge badge-${a.status}">${a.status}</span>
+      </div>
+    `).join('');
+  }
+
+  // ---- Check-in via app ----
+  function openCheckinModal(sessionId, sessionTitle) {
+    checkinTarget = sessionId;
+    document.getElementById('ci-title').textContent = sessionTitle;
+    document.getElementById('ci-desc').textContent  =
+      'Konfirmasi bahwa kamu hadir di sesi ini.';
+    document.getElementById('ci-error').style.display = 'none';
+    document.getElementById('checkin-modal').style.display = 'flex';
+  }
+
+  function closeCheckinModal() {
+    document.getElementById('checkin-modal').style.display = 'none';
+    checkinTarget = null;
+  }
+
+  async function confirmCheckin() {
+    if (!checkinTarget) return;
+    const btn   = document.getElementById('btn-checkin');
+    const errEl = document.getElementById('ci-error');
+    errEl.style.display = 'none';
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const { error } = await getSupabase()
+        .from('attendance')
+        .insert({
+          session_id:    checkinTarget,
+          user_id:       profile.id,
+          status:        'hadir',
+          check_in_time: new Date().toISOString(),
+          method:        'app',
+        });
+      if (error) throw error;
+      showToast('Check-in berhasil!', 'success');
+      closeCheckinModal();
+      await Promise.all([loadUpcoming(), loadStats()]);
+    } catch(err) {
+      errEl.textContent   = err.message.includes('unique')
+        ? 'Kamu sudah check-in di sesi ini.' : err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, '✓ Konfirmasi Hadir');
+    }
+  }
+
+  // ---- Izin ----
+  function openLeaveModal() {
+    document.getElementById('leave-reason').value = '';
+    document.getElementById('leave-error').style.display = 'none';
+    document.getElementById('leave-modal').style.display = 'flex';
+  }
+
+  function closeLeaveModal() {
+    document.getElementById('leave-modal').style.display = 'none';
+  }
+
+  async function submitLeave() {
+    const sessionId = document.getElementById('leave-session').value;
+    const reason    = document.getElementById('leave-reason').value.trim();
+    const errEl     = document.getElementById('leave-error');
+    const btn       = document.getElementById('btn-leave');
+    errEl.style.display = 'none';
+
+    if (!sessionId) {
+      errEl.textContent = 'Pilih sesi dulu.'; errEl.style.display = 'block'; return;
+    }
+    if (!reason) {
+      errEl.textContent = 'Alasan wajib diisi.'; errEl.style.display = 'block'; return;
+    }
+
+    setLoading(btn, true, 'Mengirim...');
+    try {
+      const { error } = await getSupabase()
+        .from('leave_requests')
+        .insert({ session_id: sessionId, user_id: profile.id, reason });
+      if (error) throw error;
+
+      // Kirim notifikasi email ke admin via GAS
+      const session = upcomingSessions.find(s => s.id === sessionId);
+      await fetch(APP_CONFIG.GAS_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({
+          action:       'notifyLeave',
+          memberName:   profile.full_name,
+          memberEmail:  profile.email,
+          sessionTitle: session?.title || '',
+          sessionDate:  formatDateOnly(session?.date),
+          reason,
+        }),
+      });
+
+      showToast('Izin berhasil diajukan. Admin sudah diberitahu.', 'success');
+      closeLeaveModal();
+      await loadUpcoming();
+    } catch(err) {
+      errEl.textContent = err.message.includes('unique')
+        ? 'Kamu sudah mengajukan izin untuk sesi ini.'
+        : err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Kirim Izin');
+    }
+  }
+
+  function checkGrid() {
+    const g = document.getElementById('main-grid');
+    if (g) g.style.gridTemplateColumns = window.innerWidth < 700 ? '1fr' : '1fr 1fr';
+  }
+  window.addEventListener('resize', checkGrid);
+  checkGrid();
+  init();
+</script>
+</body>
+</html>
