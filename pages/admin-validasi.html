@@ -245,12 +245,16 @@
       }
 
       // Kirim notifikasi email via GAS
+      const isDonasi  = result.type === 'donasi';
       const notifType = result.type === 'kas'     ? 'kas_confirmed'
-                      : result.type === 'donasi'  ? 'kas_confirmed'
+                      : result.type === 'donasi'  ? 'donasi_confirmed'
                       : 'reimburse_approved';
       try {
         await sendNotification(notifType, member.email, member.full_name, {
-          period:      result.period,
+          period:      isDonasi
+            ? new Date(result.created_at).toLocaleDateString('id-ID',
+                {day:'numeric',month:'long',year:'numeric'})
+            : result.period,
           amount:      result.amount,
           title:       result.title,
           category:    result.category,
