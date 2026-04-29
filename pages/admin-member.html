@@ -143,15 +143,19 @@
               </th>
               <th>Nama</th>
               <th>Email</th>
+              <th>No. WA</th>
               <th>Divisi</th>
+              <th>Instrumen</th>
+              <th>Kota</th>
               <th>Bergabung</th>
+              <th>Status Anggota</th>
+              <th>Status Org</th>
               <th>Role</th>
-              <th>Status</th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody id="member-table">
-            <tr><td colspan="8"
+            <tr><td colspan="12"
               style="text-align:center;padding:24px;color:#aaa">Memuat...</td></tr>
           </tbody>
         </table>
@@ -257,7 +261,7 @@
   function renderTable() {
     const tbody = document.getElementById('member-table');
     if (filteredMembers.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7"
+      tbody.innerHTML = `<tr><td colspan="12"
         style="text-align:center;padding:24px;color:#aaa">
         Tidak ada member</td></tr>`;
       return;
@@ -270,27 +274,25 @@
             ${selectedIds.has(m.id) ? 'checked' : ''}
             onchange="handleRowCheck(this, ${idx}, event)">
         </td>
-        <td style="font-weight:500">${m.full_name}</td>
-        <td style="font-size:13px;color:#555">${m.email}</td>
-        <td style="font-size:13px">${m.division || '—'}</td>
-        <td style="font-size:13px;white-space:nowrap">
+        <td style="font-weight:500;white-space:nowrap">${m.full_name}</td>
+        <td style="font-size:12px;color:#555">${m.email}</td>
+        <td style="font-size:12px">${m.phone || '—'}</td>
+        <td style="font-size:12px">${m.division || '—'}</td>
+        <td style="font-size:12px">${m.instrument || '—'}</td>
+        <td style="font-size:12px">${m.city || '—'}</td>
+        <td style="font-size:12px;white-space:nowrap">
           ${m.joined_at
             ? new Date(m.joined_at).toLocaleDateString('id-ID',
                 { day:'numeric', month:'short', year:'numeric' })
             : '<span style="color:#ccc">—</span>'}
         </td>
+        <td style="font-size:12px">${m.member_status || '—'}</td>
+        <td style="font-size:12px">${m.org_status || '—'}</td>
         <td>
           <span style="background:${m.role==='admin'?'#e8f5e9':'#e3f2fd'};
             color:${m.role==='admin'?'#2e7d32':'#1565c0'};
-            padding:2px 8px;border-radius:20px;font-size:12px;font-weight:600">
+            padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">
             ${m.role}
-          </span>
-        </td>
-        <td>
-          <span style="background:${m.is_active?'#e8f5e9':'#f5f5f5'};
-            color:${m.is_active?'#2e7d32':'#888'};
-            padding:2px 8px;border-radius:20px;font-size:12px;font-weight:600">
-            ${m.is_active ? 'Aktif' : 'Non-aktif'}
           </span>
         </td>
         <td>
