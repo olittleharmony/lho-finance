@@ -150,6 +150,7 @@ function renderNavbar(profile, activePage) {
     { href:'admin-validasi.html',  label:'Validasi',   id:'admin-validasi' },
     { href:'admin-transaksi.html', label:'Transaksi',  id:'admin-transaksi' },
     { href:'admin-laporan.html',   label:'Laporan',    id:'admin-laporan' },
+    { href:'admin-kas-import.html',label:'Import Kas', id:'admin-kas-import' },
     { href:'admin-member.html',    label:'Member',     id:'admin-member' },
     { href:'admin-attend.html',    label:'Absensi',    id:'admin-attend' },
     { href:'admin-setting.html',   label:'Pengaturan', id:'admin-setting' },
