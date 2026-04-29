@@ -125,6 +125,7 @@ function typeBadge(type) {
   const map = {
     kas:        { label:'Kas Bulanan', color:'#1565c0', bg:'#e3f2fd' },
     reimburse:  { label:'Reimburse',   color:'#6a1b9a', bg:'#f3e5f5' },
+    donasi:     { label:'Donasi',      color:'#0f6e56', bg:'#e1f5ee' },
     pengeluaran:{ label:'Pengeluaran', color:'#c62828', bg:'#ffebee' },
     pemasukan:  { label:'Pemasukan',   color:'#2e7d32', bg:'#e8f5e9' },
     transfer:   { label:'Transfer',    color:'#e65100', bg:'#fff3e0' },
@@ -150,6 +151,7 @@ function renderNavbar(profile, activePage) {
     { href:'admin-transaksi.html', label:'Transaksi',  id:'admin-transaksi' },
     { href:'admin-laporan.html',   label:'Laporan',    id:'admin-laporan' },
     { href:'admin-member.html',    label:'Member',     id:'admin-member' },
+    { href:'admin-attend.html',    label:'Absensi',    id:'admin-attend' },
     { href:'admin-setting.html',   label:'Pengaturan', id:'admin-setting' },
   ];
   const links = isAdmin ? adminLinks : memberLinks;
