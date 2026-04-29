@@ -37,11 +37,14 @@
         <div class="stat-value" id="stat-total-kas">—</div>
         <div class="stat-sub">Sepanjang keanggotaan</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Reimburse</div>
-        <div class="stat-value" id="stat-total-reimburse">—</div>
-        <div class="stat-sub">Disetujui</div>
-      </div>
+      <a href="kas.html" style="text-decoration:none" id="card-tunggakan">
+        <div class="stat-card red" style="cursor:pointer;transition:opacity .15s"
+          onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          <div class="stat-label">Tunggakan Kas</div>
+          <div class="stat-value" id="stat-tunggakan">—</div>
+          <div class="stat-sub" id="stat-tunggakan-sub">Klik untuk lihat detail</div>
+        </div>
+      </a>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="main-grid">
@@ -122,7 +125,7 @@
     const period = currentPeriod();
     document.getElementById('period-display').textContent = `Periode: ${formatPeriod(period)}`;
 
-    await Promise.all([loadStats(), loadNotif(), loadRecent()]);
+    await Promise.all([loadStats(), loadNotif(), loadRecent(), loadTunggakan()]);
   }
 
   async function loadStats() {
@@ -232,7 +235,53 @@
     } catch (err) { console.error(err); }
   }
 
-  async function loadRecent() {
+  async function loadTunggakan() {
+    try {
+      const setting   = await getKasSetting();
+      const kasPerBulan = Number(setting.kas_amount || 0);
+
+      const { data: paid } = await getSupabase()
+        .from('payments')
+        .select('period')
+        .eq('user_id', profile.id)
+        .eq('type', 'kas')
+        .eq('status', 'confirmed');
+
+      const paidSet   = new Set((paid || []).map(p => p.period));
+      const now       = new Date();
+      const thisYear  = now.getFullYear();
+      const thisMonth = now.getMonth() + 1;
+
+      const joinedAt  = profile.joined_at ? new Date(profile.joined_at) : new Date('2025-01-01');
+      const joinYear  = joinedAt.getFullYear();
+      const joinMonth = joinedAt.getMonth() + 1;
+
+      let tunggakan = 0;
+      for (let y = joinYear; y <= thisYear; y++) {
+        const startM = y === joinYear ? joinMonth : 1;
+        const endM   = y === thisYear ? thisMonth - 1 : 12;
+        for (let m = startM; m <= endM; m++) {
+          const period = `${y}-${String(m).padStart(2,'0')}`;
+          if (!paidSet.has(period)) tunggakan++;
+        }
+      }
+
+      const totalTunggakan = tunggakan * kasPerBulan;
+      const el      = document.getElementById('stat-tunggakan');
+      const subEl   = document.getElementById('stat-tunggakan-sub');
+      const cardEl  = document.getElementById('card-tunggakan');
+
+      if (tunggakan === 0) {
+        el.textContent    = '✓ Lunas';
+        el.style.fontSize = '18px';
+        subEl.textContent = 'Tidak ada tunggakan';
+        if (cardEl) cardEl.querySelector('.stat-card').className = 'stat-card green';
+      } else {
+        el.textContent    = formatRupiah(totalTunggakan);
+        subEl.textContent = `${tunggakan} bulan belum bayar · Klik detail`;
+      }
+    } catch(err) { console.error(err); }
+  }
     try {
       const payments = await getMyPayments();
       const recent   = payments.slice(0, 5);
