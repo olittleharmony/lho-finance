@@ -179,25 +179,43 @@
         });
       }
 
-      // Ada kas yang di-reject?
+      // Ada kas yang di-reject — hanya tampilkan kalau bulan itu belum ada payment lain yang valid
       payments.filter(p => p.type === 'kas' && p.status === 'rejected').forEach(p => {
+        // Cek apakah sudah ada payment kas bulan ini yang confirmed/pending
+        const sudahAda = payments.some(other =>
+          other.type === 'kas' &&
+          other.period === p.period &&
+          (other.status === 'confirmed' || other.status === 'pending')
+        );
+        if (sudahAda) return; // skip — sudah dibayar ulang
         tasks.push({
-          type: 'urgent',
+          type:  'urgent',
           title: `Kas ${formatPeriod(p.period)} ditolak`,
-          sub: p.review_notes ? `Alasan: ${p.review_notes}` : 'Silakan submit ulang',
-          href: 'kas.html',
-          action: 'Submit Ulang',
+          sub:   p.review_notes ? `Alasan: ${p.review_notes}` : 'Hubungi admin untuk info lebih lanjut',
+          href:  null, // tidak ada tombol aksi
+          action: null,
         });
       });
 
-      // Ada reimburse yang di-reject?
+      // Ada donasi yang di-reject
+      payments.filter(p => p.type === 'donasi' && p.status === 'rejected').forEach(p => {
+        tasks.push({
+          type:  'info',
+          title: `Donasi ditolak`,
+          sub:   p.review_notes || 'Hubungi admin untuk info lebih lanjut',
+          href:  null,
+          action: null,
+        });
+      });
+
+      // Ada reimburse yang di-reject
       payments.filter(p => p.type === 'reimburse' && p.status === 'rejected').forEach(p => {
         tasks.push({
-          type: 'urgent',
+          type:  'urgent',
           title: `Reimburse "${p.title}" ditolak`,
-          sub: p.review_notes || 'Silakan ajukan ulang',
-          href: 'reimburse.html',
-          action: 'Ajukan Ulang',
+          sub:   p.review_notes || 'Hubungi admin untuk info lebih lanjut',
+          href:  null,
+          action: null,
         });
       });
 
@@ -217,7 +235,9 @@
             <div class="task-title">${t.title}</div>
             <div class="task-sub">${t.sub}</div>
           </div>
-          <a href="${t.href}" class="btn btn-sm btn-primary">${t.action}</a>
+          ${t.href && t.action
+            ? `<a href="${t.href}" class="btn btn-sm btn-primary">${t.action}</a>`
+            : ''}
         </div>
       `).join('');
     } catch (err) { console.error(err); }
