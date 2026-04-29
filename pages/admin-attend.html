@@ -82,6 +82,7 @@
             <select id="recap-status" onchange="filterRecap()">
               <option value="">Semua</option>
               <option value="hadir">Hadir</option>
+              <option value="pending">Pending (App)</option>
               <option value="izin">Izin</option>
               <option value="sakit">Sakit</option>
               <option value="alpha">Alpha</option>
@@ -184,22 +185,47 @@
 
 <!-- Modal input absensi manual -->
 <div id="manual-modal" style="display:none;position:fixed;inset:0;z-index:9998;
-  background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  background:rgba(0,0,0,0.5);align-items:flex-start;justify-content:center;
+  padding:24px;overflow-y:auto">
   <div style="background:#fff;border-radius:12px;padding:24px;
-    max-width:640px;width:100%;max-height:90vh;overflow-y:auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    max-width:640px;width:100%;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <h3 id="manual-title">Input Absensi Manual</h3>
       <button onclick="closeManualModal()"
         style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button>
     </div>
-    <div id="manual-list">
+
+    <!-- Search -->
+    <div style="margin-bottom:12px;display:flex;gap:8px">
+      <input type="text" id="manual-search" placeholder="Cari nama atau divisi..."
+        oninput="searchManual()"
+        style="flex:1;padding:9px 12px;border:1.5px solid #e0e0e0;
+          border-radius:8px;font-size:13px;font-family:inherit">
+      <button class="btn btn-ghost btn-sm" onclick="clearManualSearch()">Reset</button>
+    </div>
+
+    <!-- Summary -->
+    <div id="manual-summary"
+      style="font-size:13px;color:#888;margin-bottom:10px;padding:8px 12px;
+        background:#f9f9f9;border-radius:6px">
+      Centang member yang ingin diinput/diubah
+    </div>
+
+    <div id="manual-list" style="max-height:50vh;overflow-y:auto">
       <div class="empty-state"><div class="spinner spinner-dark"></div></div>
     </div>
-    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px">
-      <button class="btn btn-ghost" onclick="closeManualModal()">Tutup</button>
-      <button class="btn btn-primary" id="btn-save-manual" onclick="saveManualAttend()">
-        Simpan Semua
+
+    <div style="margin-top:14px;display:flex;justify-content:space-between;
+      align-items:center;gap:10px">
+      <button class="btn btn-ghost btn-sm" onclick="selectAllManual()">
+        Pilih Semua
       </button>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost" onclick="closeManualModal()">Tutup</button>
+        <button class="btn btn-primary" id="btn-save-manual" onclick="saveManualAttend()">
+          Simpan yang Dipilih
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -310,6 +336,26 @@
     }).join('');
   }
 
+  function selectAllManual() {
+    allMembers.forEach(m => {
+      if (selectedManual[m.id] === undefined) {
+        const existing = manualAttendMap[m.id] || 'hadir';
+        selectedManual[m.id] = existing;
+      }
+    });
+    searchManual(); // re-render
+  }
+
+  function clearManualSearch() {
+    document.getElementById('manual-search').value = '';
+    searchManual();
+  }
+
+  function searchManual() {
+    const search = document.getElementById('manual-search').value;
+    renderManualList(search, window._leaveSet);
+  }
+
   // ---- Toggle checkin open ----
   async function toggleCheckin(sessionId, currentState) {
     const { error } = await getSupabase()
@@ -346,88 +392,149 @@
   }
 
   // ---- Manual attendance modal ----
+  let manualAttendMap = {}; // existing attendance data
+  let selectedManual  = {}; // { userId: status } yang diceklis
+
   async function openManualModal(sessionId, sessionTitle) {
     manualSessionId = sessionId;
+    selectedManual  = {};
     document.getElementById('manual-title').textContent = `Absensi: ${sessionTitle}`;
     document.getElementById('manual-modal').style.display = 'flex';
+    document.getElementById('manual-search').value = '';
 
     const listEl = document.getElementById('manual-list');
     listEl.innerHTML = `<div class="empty-state"><div class="spinner spinner-dark"></div></div>`;
 
-    // Ambil existing attendance
-    const { data: existing } = await getSupabase()
-      .from('attendance')
-      .select('user_id, status, notes')
-      .eq('session_id', sessionId);
+    // Ambil existing attendance & leave requests
+    const [attRes, leaveRes] = await Promise.all([
+      getSupabase().from('attendance').select('user_id,status,notes').eq('session_id', sessionId),
+      getSupabase().from('leave_requests').select('user_id').eq('session_id', sessionId),
+    ]);
 
-    const existMap = {};
-    (existing||[]).forEach(a => existMap[a.user_id] = a);
+    manualAttendMap = {};
+    (attRes.data||[]).forEach(a => manualAttendMap[a.user_id] = a.status);
+    const leaveSet = new Set((leaveRes.data||[]).map(l => l.user_id));
+    window._leaveSet = leaveSet;
 
-    // Ambil leave requests
-    const { data: leaves } = await getSupabase()
-      .from('leave_requests')
-      .select('user_id, reason')
-      .eq('session_id', sessionId);
-    const leaveSet = new Set((leaves||[]).map(l => l.user_id));
+    renderManualList('', leaveSet);
+  }
 
-    listEl.innerHTML = allMembers.map(m => {
-      const att   = existMap[m.id];
-      const status = att?.status || (leaveSet.has(m.id) ? 'izin' : '');
+  function renderManualList(search, leaveSet) {
+    const listEl  = document.getElementById('manual-list');
+    const filtered = allMembers.filter(m =>
+      !search || m.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      (m.division||'').toLowerCase().includes(search.toLowerCase())
+    );
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div style="text-align:center;padding:20px;color:#888">
+        Tidak ada member ditemukan</div>`;
+      return;
+    }
+
+    listEl.innerHTML = filtered.map(m => {
+      const existing = manualAttendMap[m.id];
+      const isLeave  = leaveSet?.has(m.id);
+      const isChecked = selectedManual[m.id] !== undefined;
+
       return `
-      <div class="member-row">
-        <div style="flex:1">
+      <div class="member-row" id="mrow-${m.id}"
+        style="background:${isChecked?'#f0f4ff':'#fff'};border-radius:8px;
+          padding:8px 10px;margin-bottom:4px;transition:background .15s">
+        <input type="checkbox" class="cb" id="mcb-${m.id}"
+          ${isChecked ? 'checked' : ''}
+          onchange="toggleManualSelect('${m.id}', this.checked)"
+          style="width:16px;height:16px;accent-color:#1a1a2e;flex-shrink:0">
+        <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:500">${m.full_name}</div>
-          <div style="font-size:12px;color:#888">${m.division||'—'}</div>
+          <div style="font-size:11px;color:#888">${m.division||'—'}</div>
         </div>
-        <select id="att-${m.id}" style="padding:5px 8px;font-size:12px;
-          border:1px solid #e0e0e0;border-radius:6px;font-family:inherit">
-          <option value="">— Belum —</option>
-          <option value="hadir"  ${status==='hadir' ?'selected':''}>Hadir</option>
-          <option value="izin"   ${status==='izin'  ?'selected':''}>Izin</option>
-          <option value="sakit"  ${status==='sakit' ?'selected':''}>Sakit</option>
-          <option value="alpha"  ${status==='alpha' ?'selected':''}>Alpha</option>
+        ${existing ? `<span class="status-badge badge-${existing}"
+          style="font-size:11px">${existing}</span>` :
+          isLeave ? `<span class="status-badge badge-izin" style="font-size:11px">Izin</span>` :
+          `<span style="font-size:11px;color:#ccc">—</span>`}
+        <select id="mstatus-${m.id}"
+          style="padding:5px 8px;font-size:12px;border:1px solid #e0e0e0;
+            border-radius:6px;font-family:inherit;
+            display:${isChecked?'block':'none'};min-width:90px"
+          onchange="selectedManual['${m.id}']=this.value">
+          <option value="hadir"  ${(selectedManual[m.id]||existing)==='hadir' ?'selected':''}>Hadir</option>
+          <option value="izin"   ${(selectedManual[m.id]||existing)==='izin'  ?'selected':''}>Izin</option>
+          <option value="sakit"  ${(selectedManual[m.id]||existing)==='sakit' ?'selected':''}>Sakit</option>
+          <option value="alpha"  ${(selectedManual[m.id]||existing)==='alpha' ?'selected':''}>Alpha</option>
         </select>
       </div>`;
     }).join('');
+
+    // Update summary
+    const n = Object.keys(selectedManual).length;
+    document.getElementById('manual-summary').textContent =
+      n > 0 ? `${n} member dipilih` : 'Centang member yang ingin diinput/diubah';
+  }
+
+  function toggleManualSelect(userId, checked) {
+    const statusSel = document.getElementById(`mstatus-${userId}`);
+    const row       = document.getElementById(`mrow-${userId}`);
+    if (checked) {
+      const existing = manualAttendMap[userId] || 'hadir';
+      selectedManual[userId] = existing;
+      if (statusSel) {
+        statusSel.style.display = 'block';
+        statusSel.value = existing;
+      }
+      if (row) row.style.background = '#f0f4ff';
+    } else {
+      delete selectedManual[userId];
+      if (statusSel) statusSel.style.display = 'none';
+      if (row) row.style.background = '#fff';
+    }
+    const n = Object.keys(selectedManual).length;
+    document.getElementById('manual-summary').textContent =
+      n > 0 ? `${n} member dipilih` : 'Centang member yang ingin diinput/diubah';
+  }
+
+  function searchManual() {
+    const search  = document.getElementById('manual-search').value;
+    // Rebuild leaveSet dari data yang sudah ada
+    renderManualList(search, window._leaveSet);
   }
 
   function closeManualModal() {
     document.getElementById('manual-modal').style.display = 'none';
     manualSessionId = null;
+    selectedManual  = {};
   }
 
   async function saveManualAttend() {
     if (!manualSessionId) return;
+    const entries = Object.entries(selectedManual);
+    if (entries.length === 0) {
+      showToast('Belum ada member yang dipilih.', 'warning'); return;
+    }
     const btn = document.getElementById('btn-save-manual');
-    setLoading(btn, true, 'Menyimpan...');
+    setLoading(btn, true, `Menyimpan ${entries.length} data...`);
     try {
-      const upserts = allMembers
-        .map(m => {
-          const status = document.getElementById(`att-${m.id}`)?.value;
-          if (!status) return null;
-          return {
-            session_id:  manualSessionId,
-            user_id:     m.id,
-            status,
-            method:      'manual',
-            created_by:  profile.id,
-          };
-        })
-        .filter(Boolean);
+      const upserts = entries.map(([userId, status]) => ({
+        session_id: manualSessionId,
+        user_id:    userId,
+        status,
+        method:     'manual',
+        created_by: profile.id,
+      }));
 
-      if (upserts.length > 0) {
-        const { error } = await getSupabase()
-          .from('attendance')
-          .upsert(upserts, { onConflict: 'session_id,user_id' });
-        if (error) throw error;
-      }
+      const { error } = await getSupabase()
+        .from('attendance')
+        .upsert(upserts, { onConflict: 'session_id,user_id' });
+      if (error) throw error;
 
-      showToast('Absensi berhasil disimpan!', 'success');
+      showToast(`${entries.length} absensi berhasil disimpan!`, 'success');
       closeManualModal();
+      // Refresh manual map untuk buka berikutnya
+      entries.forEach(([id, status]) => manualAttendMap[id] = status);
     } catch(err) {
       showToast(err.message, 'error');
     } finally {
-      setLoading(btn, false, 'Simpan Semua');
+      setLoading(btn, false, 'Simpan yang Dipilih');
     }
   }
 
@@ -459,13 +566,38 @@
       return;
     }
 
-    // Stats
-    const counts = { hadir:0, izin:0, sakit:0, alpha:0 };
-    allRecap.forEach(a => counts[a.status] = (counts[a.status]||0)+1);
-    const total = allRecap.length;
+    // Stats — exclude pending dari count utama
+    const confirmed = allRecap.filter(a => a.status !== 'pending');
+    const counts = { hadir:0, izin:0, sakit:0, alpha:0, pending:0 };
+    allRecap.forEach(a => { if (counts[a.status] !== undefined) counts[a.status]++; });
+    const total = confirmed.length;
     const pct   = total > 0 ? Math.round((counts.hadir/total)*100) : 0;
 
+    const pendingCheckins = allRecap.filter(a => a.status === 'pending');
+
     el.innerHTML = `
+      ${pendingCheckins.length > 0 ? `
+      <div class="card" style="margin-bottom:16px;border-left:4px solid #7b1fa2">
+        <div class="card-header">
+          <h3 style="color:#7b1fa2">⏳ Menunggu Validasi (${pendingCheckins.length})</h3>
+        </div>
+        ${pendingCheckins.map(a => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+          border-bottom:1px solid #f0f0f0">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:500">${a.profiles?.full_name||'—'}</div>
+            <div style="font-size:12px;color:#888">Check-in via app ·
+              ${a.check_in_time ? new Date(a.check_in_time)
+                .toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : ''}
+            </div>
+          </div>
+          <button class="btn btn-success btn-sm"
+            onclick="approveCheckin('${a.id}')">✓ Setujui</button>
+          <button class="btn btn-danger btn-sm"
+            onclick="rejectCheckin('${a.id}')">✕ Tolak</button>
+        </div>`).join('')}
+      </div>` : ''}
+
       <div class="card" style="margin-bottom:16px">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
           ${['hadir','izin','sakit','alpha'].map(s => `
@@ -499,7 +631,7 @@
             </tr>
           </thead>
           <tbody>
-            ${data.map(a => `
+            ${data.filter(a => a.status !== 'pending').map(a => `
             <tr style="border-bottom:1px solid #f0f0f0">
               <td style="padding:10px 12px;font-weight:500">${a.profiles?.full_name||'—'}</td>
               <td style="padding:8px;color:#888;font-size:12px">${a.profiles?.division||'—'}</td>
@@ -519,6 +651,40 @@
           </tbody>
         </table>
       </div>`;
+  }
+
+  async function approveAllPending() {
+    const pendingIds = allRecap
+      .filter(a => a.status === 'pending')
+      .map(a => a.id);
+    if (pendingIds.length === 0) return;
+    const { error } = await getSupabase()
+      .from('attendance')
+      .update({ status: 'hadir' })
+      .in('id', pendingIds);
+    if (error) { showToast(error.message, 'error'); return; }
+    showToast(`${pendingIds.length} check-in disetujui!`, 'success');
+    await loadRecap();
+  }
+
+  async function approveCheckin(attendId) {
+    const { error } = await getSupabase()
+      .from('attendance')
+      .update({ status: 'hadir' })
+      .eq('id', attendId);
+    if (error) { showToast(error.message, 'error'); return; }
+    showToast('Check-in disetujui!', 'success');
+    await loadRecap();
+  }
+
+  async function rejectCheckin(attendId) {
+    const { error } = await getSupabase()
+      .from('attendance')
+      .update({ status: 'alpha' })
+      .eq('id', attendId);
+    if (error) { showToast(error.message, 'error'); return; }
+    showToast('Check-in ditolak, status jadi Alpha.', 'info');
+    await loadRecap();
   }
 
   // ---- Leave requests ----
