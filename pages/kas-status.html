@@ -236,7 +236,16 @@
             ${pay.review_notes}
           </div>`;
         }
-        actionEl = `<a href="kas.html" class="pay-btn">Submit Ulang</a>`;
+        // Cek apakah sudah ada payment lain yang confirmed/pending untuk bulan ini
+        // Kalau belum, tampilkan tombol bayar (bukan submit ulang)
+        const sudahBayarUlang = allPayments.some(other =>
+          other.period === period &&
+          other.id !== pay.id &&
+          (other.status === 'confirmed' || other.status === 'pending')
+        );
+        if (!sudahBayarUlang) {
+          actionEl = `<a href="kas.html" class="pay-btn">Bayar Sekarang</a>`;
+        }
       } else if (isPast && !isFuture) {
         cls = 'empty'; statusLabel = 'Belum bayar'; statusColor = '#c62828';
         if (kasPerBulan > 0) {
