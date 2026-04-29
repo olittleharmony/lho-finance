@@ -63,7 +63,9 @@ function isOpsAdmin(profile) {
 async function requireAuth(requiredRole = null) {
   const profile = await getCurrentProfile();
   const loginUrl = 'https://olittleharmony.github.io/member/index.html';
-  const isLoginPage = window.location.href.includes('member/index.html');
+  const currentHref = window.location.href;
+  const isLoginPage = currentHref.includes('member/index.html');
+  const isAttendancePage = currentHref.includes('lho-attendance');
 
   if (!profile) {
     if (!isLoginPage) window.location.href = loginUrl;
@@ -75,17 +77,19 @@ async function requireAuth(requiredRole = null) {
     return null;
   }
 
-  // Akun ops admin → hanya boleh akses halaman admin
+  // Akun ops admin → hanya boleh akses halaman admin (bukan attendance/member)
   if (isOpsAdmin(profile)) {
     const isAdminPage = window.location.pathname.includes('admin-');
-    if (!isAdminPage) {
-      // Kalau coba akses halaman member → redirect ke admin dashboard
+    if (!isAdminPage && !isAttendancePage) {
       window.location.href =
         'https://olittleharmony.github.io/lho-finance/pages/admin-dashboard.html';
       return null;
     }
     return profile;
   }
+
+  // Halaman attendance boleh diakses semua role tanpa restriction
+  if (isAttendancePage) return profile;
 
   if (requiredRole && profile.role !== requiredRole) {
     window.location.href = 'https://olittleharmony.github.io/member/hub.html';
