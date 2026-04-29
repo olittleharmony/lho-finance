@@ -211,6 +211,30 @@
       Centang member yang ingin diinput/diubah
     </div>
 
+    <!-- Bulk action bar -->
+    <div id="bulk-status-bar" style="display:none;margin-bottom:10px;
+      padding:10px 12px;background:#1a1a2e;border-radius:8px;
+      display:none;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="color:#fff;font-size:13px;flex-shrink:0" id="bulk-bar-label">
+        0 dipilih
+      </span>
+      <select id="bulk-status-select"
+        style="padding:6px 10px;border-radius:6px;font-size:13px;
+          font-family:inherit;border:none;background:#fff;color:#1a1a2e">
+        <option value="">— Set status ke —</option>
+        <option value="hadir">Hadir</option>
+        <option value="izin">Izin</option>
+        <option value="sakit">Sakit</option>
+        <option value="alpha">Alpha</option>
+      </select>
+      <button onclick="applyBulkStatus()"
+        style="padding:6px 14px;background:#c9a84c;color:#1a1a2e;border:none;
+          border-radius:6px;font-size:13px;font-weight:600;font-family:inherit;
+          cursor:pointer">
+        Terapkan ke Semua Dipilih
+      </button>
+    </div>
+
     <div id="manual-list" style="max-height:50vh;overflow-y:auto">
       <div class="empty-state"><div class="spinner spinner-dark"></div></div>
     </div>
@@ -339,11 +363,11 @@
   function selectAllManual() {
     allMembers.forEach(m => {
       if (selectedManual[m.id] === undefined) {
-        const existing = manualAttendMap[m.id] || 'hadir';
-        selectedManual[m.id] = existing;
+        selectedManual[m.id] = manualAttendMap[m.id] || 'hadir';
       }
     });
-    searchManual(); // re-render
+    searchManual();
+    updateBulkBar();
   }
 
   function clearManualSearch() {
@@ -478,19 +502,37 @@
     if (checked) {
       const existing = manualAttendMap[userId] || 'hadir';
       selectedManual[userId] = existing;
-      if (statusSel) {
-        statusSel.style.display = 'block';
-        statusSel.value = existing;
-      }
+      if (statusSel) { statusSel.style.display = 'block'; statusSel.value = existing; }
       if (row) row.style.background = '#f0f4ff';
     } else {
       delete selectedManual[userId];
       if (statusSel) statusSel.style.display = 'none';
       if (row) row.style.background = '#fff';
     }
-    const n = Object.keys(selectedManual).length;
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const n   = Object.keys(selectedManual).length;
+    const bar = document.getElementById('bulk-status-bar');
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    document.getElementById('bulk-bar-label').textContent = `${n} member dipilih`;
     document.getElementById('manual-summary').textContent =
       n > 0 ? `${n} member dipilih` : 'Centang member yang ingin diinput/diubah';
+  }
+
+  function applyBulkStatus() {
+    const status = document.getElementById('bulk-status-select').value;
+    if (!status) { showToast('Pilih status dulu.', 'warning'); return; }
+    const ids = Object.keys(selectedManual);
+    if (ids.length === 0) { showToast('Pilih member dulu.', 'warning'); return; }
+    // Update selectedManual dan dropdown per member
+    ids.forEach(id => {
+      selectedManual[id] = status;
+      const sel = document.getElementById(`mstatus-${id}`);
+      if (sel) sel.value = status;
+    });
+    showToast(`Status "${status}" diterapkan ke ${ids.length} member.`, 'success');
   }
 
   function searchManual() {
