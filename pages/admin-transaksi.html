@@ -692,16 +692,52 @@
   async function deleteTransaction(id, title, nominal) {
     showModal(
       'Hapus Transaksi',
-      `Hapus transaksi <strong>"${title}"</strong> sebesar <strong>${nominal}</strong>?<br>
+      `Hapus transaksi <strong>"${title}"</strong> sebesar <strong>${nominal}</strong>?<br><br>
+       <span style="font-size:13px;color:#555">
+         Jika transaksi ini berasal dari konfirmasi pembayaran kas/donasi/reimburse,
+         status pembayaran terkait akan dikembalikan ke <strong>Pending</strong>.
+       </span><br><br>
        <span style="color:#c62828;font-size:13px">Tindakan ini tidak bisa dibatalkan.</span>`,
       async () => {
         try {
+          // Ambil detail transaksi dulu untuk cek notes
+          const { data: trx } = await getSupabase()
+            .from('transactions')
+            .select('notes, type, category')
+            .eq('id', id)
+            .single();
+
+          // Cari payment ID dari notes (format: "Dikonfirmasi dari payment ID: <uuid>")
+          const paymentIdMatch = trx?.notes?.match(
+            /payment ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+          );
+
+          // Hapus transaksi
           const { error } = await getSupabase()
             .from('transactions')
             .delete()
             .eq('id', id);
           if (error) throw error;
-          showToast('Transaksi berhasil dihapus.', 'success');
+
+          // Kalau ada payment terkait → kembalikan ke pending
+          if (paymentIdMatch?.[1]) {
+            await getSupabase()
+              .from('payments')
+              .update({
+                status:      'pending',
+                reviewed_at: null,
+                reviewed_by: null,
+                review_notes: null,
+              })
+              .eq('id', paymentIdMatch[1]);
+          }
+
+          showToast(
+            paymentIdMatch?.[1]
+              ? 'Transaksi dihapus. Status pembayaran dikembalikan ke Pending.'
+              : 'Transaksi berhasil dihapus.',
+            'success'
+          );
           await loadHistory();
         } catch(err) {
           showToast('Gagal hapus: ' + err.message, 'error');
