@@ -37,14 +37,14 @@
         <div class="stat-value" id="stat-total-kas">—</div>
         <div class="stat-sub">Sepanjang keanggotaan</div>
       </div>
-      <a href="kas.html" style="text-decoration:none" id="card-tunggakan">
-        <div class="stat-card red" style="cursor:pointer;transition:opacity .15s"
-          onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-          <div class="stat-label">Tunggakan Kas</div>
-          <div class="stat-value" id="stat-tunggakan">—</div>
-          <div class="stat-sub" id="stat-tunggakan-sub">Klik untuk lihat detail</div>
-        </div>
-      </a>
+      <div class="stat-card red" id="card-tunggakan"
+        style="cursor:pointer;transition:opacity .15s"
+        onclick="window.location.href='kas.html'"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        <div class="stat-label">Tunggakan Kas</div>
+        <div class="stat-value" id="stat-tunggakan">—</div>
+        <div class="stat-sub" id="stat-tunggakan-sub">Klik untuk lihat detail</div>
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="main-grid">
@@ -275,13 +275,19 @@
         el.textContent    = '✓ Lunas';
         el.style.fontSize = '18px';
         subEl.textContent = 'Tidak ada tunggakan';
-        if (cardEl) cardEl.querySelector('.stat-card').className = 'stat-card green';
+        if (cardEl) {
+          cardEl.className = cardEl.className.replace('red', 'green');
+          cardEl.onclick   = null;
+          cardEl.style.cursor = 'default';
+        }
       } else {
         el.textContent    = formatRupiah(totalTunggakan);
         subEl.textContent = `${tunggakan} bulan belum bayar · Klik detail`;
       }
     } catch(err) { console.error(err); }
   }
+
+  async function loadRecent() {
     try {
       const payments = await getMyPayments();
       const recent   = payments.slice(0, 5);
