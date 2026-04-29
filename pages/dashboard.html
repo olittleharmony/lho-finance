@@ -167,61 +167,50 @@
       const tasks    = [];
 
       // Belum bayar kas bulan ini?
-      const kasThisMonth = payments.find(p => p.type === 'kas' && p.period === period && p.status !== 'rejected');
+      const kasThisMonth = payments.find(p =>
+        p.type === 'kas' && p.period === period && p.status !== 'rejected');
       if (!kasThisMonth) {
         const setting = await getKasSetting();
         tasks.push({
-          type: 'urgent',
-          title: `Kas ${formatPeriod(period)} belum dibayar`,
-          sub: `Nominal: ${formatRupiah(setting.kas_amount || 0)} · Jatuh tempo tgl ${setting.kas_due_day || 10}`,
-          href: 'kas.html',
+          type:   'urgent',
+          title:  `Kas ${formatPeriod(period)} belum dibayar`,
+          sub:    `Nominal: ${formatRupiah(setting.kas_amount || 0)} · Jatuh tempo tgl ${setting.kas_due_day || 10}`,
+          href:   'kas.html',
           action: 'Bayar Sekarang',
         });
       }
 
-      // Ada kas yang di-reject — hanya tampilkan kalau bulan itu belum ada payment lain yang valid
-      payments.filter(p => p.type === 'kas' && p.status === 'rejected').forEach(p => {
-        // Cek apakah sudah ada payment kas bulan ini yang confirmed/pending
-        const sudahAda = payments.some(other =>
-          other.type === 'kas' &&
-          other.period === p.period &&
-          (other.status === 'confirmed' || other.status === 'pending')
-        );
-        if (sudahAda) return; // skip — sudah dibayar ulang
+      // Ada pembayaran pending (menunggu konfirmasi admin)
+      const pendingKas = payments.filter(p =>
+        p.type === 'kas' && p.status === 'pending');
+      pendingKas.forEach(p => {
         tasks.push({
-          type:  'urgent',
-          title: `Kas ${formatPeriod(p.period)} ditolak`,
-          sub:   p.review_notes ? `Alasan: ${p.review_notes}` : 'Hubungi admin untuk info lebih lanjut',
-          href:  null, // tidak ada tombol aksi
-          action: null,
+          type:   'info',
+          title:  `Kas ${formatPeriod(p.period)} menunggu konfirmasi`,
+          sub:    'Admin sedang memvalidasi pembayaranmu',
+          href:   null, action: null,
         });
       });
 
-      // Ada donasi yang di-reject
-      payments.filter(p => p.type === 'donasi' && p.status === 'rejected').forEach(p => {
+      const pendingOther = payments.filter(p =>
+        p.type !== 'kas' && p.status === 'pending');
+      pendingOther.forEach(p => {
         tasks.push({
-          type:  'info',
-          title: `Donasi ditolak`,
-          sub:   p.review_notes || 'Hubungi admin untuk info lebih lanjut',
-          href:  null,
-          action: null,
-        });
-      });
-
-      // Ada reimburse yang di-reject
-      payments.filter(p => p.type === 'reimburse' && p.status === 'rejected').forEach(p => {
-        tasks.push({
-          type:  'urgent',
-          title: `Reimburse "${p.title}" ditolak`,
-          sub:   p.review_notes || 'Hubungi admin untuk info lebih lanjut',
-          href:  null,
-          action: null,
+          type:   'info',
+          title:  `${p.type === 'donasi' ? 'Donasi' : 'Reimburse'} menunggu konfirmasi`,
+          sub:    'Admin sedang memvalidasi pengajuanmu',
+          href:   null, action: null,
         });
       });
 
       const el = document.getElementById('notif-list');
+
       if (tasks.length === 0) {
-        el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Semua beres!</div></div>`;
+        document.getElementById('notif-count').style.display = 'none';
+        el.innerHTML = `<div class="empty-state">
+          <div class="empty-icon">✓</div>
+          <div class="empty-text">Semua beres! Cek <a href="riwayat.html" style="color:#1565c0">Riwayat</a> untuk detail transaksi.</div>
+        </div>`;
         return;
       }
 
