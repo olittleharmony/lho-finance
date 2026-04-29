@@ -695,7 +695,7 @@
       `Hapus transaksi <strong>"${title}"</strong> sebesar <strong>${nominal}</strong>?<br><br>
        <span style="font-size:13px;color:#555">
          Jika transaksi ini berasal dari konfirmasi pembayaran kas/donasi/reimburse,
-         status pembayaran terkait akan dikembalikan ke <strong>Pending</strong>.
+         data pembayaran terkait juga akan <strong>dihapus permanen</strong>.
        </span><br><br>
        <span style="color:#c62828;font-size:13px">Tindakan ini tidak bisa dibatalkan.</span>`,
       async () => {
@@ -719,22 +719,17 @@
             .eq('id', id);
           if (error) throw error;
 
-          // Kalau ada payment terkait → kembalikan ke pending
+          // Kalau ada payment terkait → hapus juga (bukan reset ke pending)
           if (paymentIdMatch?.[1]) {
             await getSupabase()
               .from('payments')
-              .update({
-                status:      'pending',
-                reviewed_at: null,
-                reviewed_by: null,
-                review_notes: null,
-              })
+              .delete()
               .eq('id', paymentIdMatch[1]);
           }
 
           showToast(
             paymentIdMatch?.[1]
-              ? 'Transaksi dihapus. Status pembayaran dikembalikan ke Pending.'
+              ? 'Transaksi dan data pembayaran terkait berhasil dihapus.'
               : 'Transaksi berhasil dihapus.',
             'success'
           );
