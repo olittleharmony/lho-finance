@@ -135,7 +135,7 @@
     const profile = await requireAuth('admin');
     if (!profile) return;
     document.getElementById('navbar-container').innerHTML =
-      renderNavbar(profile, 'admin-laporan');
+      renderNavbar(profile, 'admin-kas-import');
   }
 
   async function handlePreview() {
