@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kelola Absensi — LHO Finance</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .status-badge { padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+    .badge-hadir  { background:#e8f5e9; color:#2e7d32; }
+    .badge-izin   { background:#e3f2fd; color:#1565c0; }
+    .badge-sakit  { background:#fff3e0; color:#e65100; }
+    .badge-alpha  { background:#ffebee; color:#c62828; }
+    .tab-btn {
+      padding:7px 18px; border:1.5px solid #e0e0e0;
+      border-radius:6px; font-family:inherit; font-size:13px;
+      font-weight:500; cursor:pointer; background:#fff;
+      color:#555; transition:all .15s;
+    }
+    .tab-btn.active { background:#1a1a2e; color:#fff; border-color:#1a1a2e; }
+    .member-row {
+      display:flex; align-items:center; gap:10px;
+      padding:8px 12px; border-radius:8px; margin-bottom:4px;
+    }
+    .member-row:hover { background:#f9f9f9; }
+    .toggle-open {
+      position:relative; width:44px; height:24px;
+      background:#e0e0e0; border-radius:99px;
+      cursor:pointer; transition:background .2s; border:none;
+      flex-shrink:0;
+    }
+    .toggle-open::after {
+      content:''; position:absolute; top:3px; left:3px;
+      width:18px; height:18px; border-radius:50%;
+      background:#fff; transition:transform .2s;
+    }
+    .toggle-open.on { background:#2e7d32; }
+    .toggle-open.on::after { transform:translateX(20px); }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <div id="navbar-container"></div>
+  <div class="main-content">
+
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Kelola Absensi</h1>
+        <p>Sesi latihan, kehadiran member, dan laporan</p>
+      </div>
+      <button class="btn btn-primary" onclick="openSessionModal()">+ Buat Sesi</button>
+    </div>
+
+    <!-- Tab -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="tab-btn active" id="tab-sessions" onclick="switchTab('sessions')">Daftar Sesi</button>
+      <button class="tab-btn" id="tab-recap" onclick="switchTab('recap')">Rekap Kehadiran</button>
+      <button class="tab-btn" id="tab-leave" onclick="switchTab('leave')">Pengajuan Izin</button>
+      <button class="tab-btn" id="tab-qr" onclick="switchTab('qr')">QR Code</button>
+    </div>
+
+    <!-- Panel: Sesi -->
+    <div id="panel-sessions">
+      <div id="session-list">
+        <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+      </div>
+    </div>
+
+    <!-- Panel: Rekap -->
+    <div id="panel-recap" style="display:none">
+      <div class="card" style="margin-bottom:16px">
+        <div class="filter-bar" style="margin-bottom:0">
+          <div class="form-group">
+            <label>Pilih Sesi</label>
+            <select id="recap-session" onchange="loadRecap()" style="min-width:200px">
+              <option value="">— Pilih sesi —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Filter Status</label>
+            <select id="recap-status" onchange="filterRecap()">
+              <option value="">Semua</option>
+              <option value="hadir">Hadir</option>
+              <option value="izin">Izin</option>
+              <option value="sakit">Sakit</option>
+              <option value="alpha">Alpha</option>
+            </select>
+          </div>
+          <div class="form-group" style="align-self:flex-end">
+            <button class="btn btn-gold btn-sm" onclick="exportRecap()">↑ Export</button>
+          </div>
+        </div>
+      </div>
+      <div id="recap-content">
+        <div class="empty-state">
+          <div class="empty-text">Pilih sesi untuk melihat rekap</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: Izin -->
+    <div id="panel-leave" style="display:none">
+      <div class="card">
+        <div class="card-header">
+          <h3>Pengajuan Izin Member</h3>
+        </div>
+        <div id="leave-list">
+          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: QR -->
+    <div id="panel-qr" style="display:none">
+      <div class="card" style="max-width:480px;margin:0 auto;text-align:center">
+        <div class="card-header"><h3>QR Code Absensi LHO</h3></div>
+        <p style="font-size:13px;color:#555;margin-bottom:20px">
+          Print QR ini dan tempel di tempat latihan.
+          QR berlaku permanen — member scan untuk check-in saat ada sesi aktif.
+        </p>
+        <div id="qr-container" style="padding:20px;background:#f9f9f9;
+          border-radius:12px;border:1px solid #e0e0e0;margin-bottom:16px">
+          <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+        </div>
+        <div id="qr-url" style="font-size:12px;color:#888;margin-bottom:16px;
+          word-break:break-all"></div>
+        <button class="btn btn-primary" onclick="printQR()">🖨 Print QR</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal buat/edit sesi -->
+<div id="session-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:flex-start;justify-content:center;
+  padding:24px;overflow-y:auto">
+  <div style="background:#fff;border-radius:12px;padding:24px;
+    max-width:520px;width:100%;margin:0 auto">
+    <h3 id="modal-title" style="margin-bottom:18px">Buat Sesi Baru</h3>
+    <div class="form-group">
+      <label>Judul <span style="color:#c62828">*</span></label>
+      <input type="text" id="s-title" placeholder="Latihan Mingguan / Konser Tahunan">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Tipe</label>
+        <select id="s-type">
+          <option value="latihan">Latihan</option>
+          <option value="event">Event</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tanggal <span style="color:#c62828">*</span></label>
+        <input type="date" id="s-date">
+      </div>
+      <div class="form-group">
+        <label>Jam Mulai</label>
+        <input type="time" id="s-start">
+      </div>
+      <div class="form-group">
+        <label>Jam Selesai</label>
+        <input type="time" id="s-end">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Lokasi</label>
+      <input type="text" id="s-location" placeholder="Aula Musik LHO">
+    </div>
+    <div class="form-group">
+      <label>Deskripsi</label>
+      <textarea id="s-desc" placeholder="Keterangan tambahan..."></textarea>
+    </div>
+    <div id="modal-error" style="color:#c62828;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeSessionModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-save-session" onclick="saveSession()">
+        Simpan Sesi
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal input absensi manual -->
+<div id="manual-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+  background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:12px;padding:24px;
+    max-width:640px;width:100%;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 id="manual-title">Input Absensi Manual</h3>
+      <button onclick="closeManualModal()"
+        style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">✕</button>
+    </div>
+    <div id="manual-list">
+      <div class="empty-state"><div class="spinner spinner-dark"></div></div>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn btn-ghost" onclick="closeManualModal()">Tutup</button>
+      <button class="btn btn-primary" id="btn-save-manual" onclick="saveManualAttend()">
+        Simpan Semua
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/supabase.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  let profile        = null;
+  let allSessions    = [];
+  let allMembers     = [];
+  let allRecap       = [];
+  let editingSession = null;
+  let manualSessionId = null;
+
+  async function init() {
+    profile = await requireAuth('admin');
+    if (!profile) return;
+    document.getElementById('navbar-container').innerHTML =
+      renderNavbar(profile, 'admin-attend');
+    document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
+
+    await Promise.all([loadSessions(), loadMembers(), loadLeaveList(), loadQR()]);
+  }
+
+  // ---- Tab ----
+  function switchTab(tab) {
+    ['sessions','recap','leave','qr'].forEach(t => {
+      document.getElementById(`panel-${t}`).style.display = t === tab ? '' : 'none';
+      document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+    });
+  }
+
+  // ---- Load sessions ----
+  async function loadSessions() {
+    const { data } = await getSupabase()
+      .from('sessions')
+      .select('*')
+      .order('date', { ascending: false });
+    allSessions = data || [];
+
+    // Populate recap select
+    const sel = document.getElementById('recap-session');
+    sel.innerHTML = '<option value="">— Pilih sesi —</option>' +
+      allSessions.map(s => `<option value="${s.id}">
+        ${s.title} — ${formatDateOnly(s.date)}</option>`).join('');
+
+    renderSessions();
+  }
+
+  function renderSessions() {
+    const el = document.getElementById('session-list');
+    if (allSessions.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📅</div>
+        <div class="empty-text">Belum ada sesi. Buat sesi pertama!</div>
+      </div>`;
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    el.innerHTML = allSessions.map(s => {
+      const isToday = s.date === today;
+      const isPast  = s.date < today;
+      return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+              <span style="font-weight:700;font-size:15px">${s.title}</span>
+              <span style="background:${s.type==='event'?'#f3e5f5':'#e3f2fd'};
+                color:${s.type==='event'?'#7b1fa2':'#1565c0'};
+                padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">
+                ${s.type}</span>
+              ${isToday ? `<span style="background:#c9a84c;color:#1a1a2e;
+                padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">
+                Hari ini</span>` : ''}
+            </div>
+            <div style="font-size:13px;color:#555">
+              📅 ${formatDateOnly(s.date)}
+              ${s.start_time ? ' · ⏰ '+s.start_time.slice(0,5) : ''}
+              ${s.end_time   ? '–'+s.end_time.slice(0,5) : ''}
+              ${s.location   ? ' · 📍 '+s.location : ''}
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <!-- Toggle buka/tutup absen -->
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#555">
+              <span>${s.checkin_open ? 'Absen Buka' : 'Absen Tutup'}</span>
+              <button class="toggle-open ${s.checkin_open ? 'on' : ''}"
+                onclick="toggleCheckin('${s.id}', ${s.checkin_open})">
+              </button>
+            </div>
+            <button class="btn btn-ghost btn-sm"
+              onclick="openManualModal('${s.id}','${s.title.replace(/'/g,"\\'")}')">
+              Input Manual
+            </button>
+            ${isPast ? `<button class="btn btn-gold btn-sm"
+              onclick="markAlpha('${s.id}')">
+              Mark Alpha</button>` : ''}
+            <button class="btn btn-ghost btn-sm" onclick="editSession('${s.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSession('${s.id}')">Hapus</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ---- Toggle checkin open ----
+  async function toggleCheckin(sessionId, currentState) {
+    const { error } = await getSupabase()
+      .from('sessions')
+      .update({ checkin_open: !currentState })
+      .eq('id', sessionId);
+    if (error) { showToast(error.message, 'error'); return; }
+    await loadSessions();
+    showToast(`Absen ${!currentState ? 'dibuka' : 'ditutup'}!`, 'success');
+  }
+
+  // ---- Mark alpha ----
+  async function markAlpha(sessionId) {
+    showModal('Mark Alpha', 'Member yang belum hadir/izin akan ditandai Alpha. Lanjutkan?',
+      async () => {
+        const { data, error } = await getSupabase().rpc('mark_alpha', {
+          p_session_id: sessionId
+        });
+        if (error) { showToast(error.message, 'error'); return; }
+        showToast(`${data.alpha_count} member ditandai Alpha.`, 'success');
+      }, 'Ya, Mark Alpha'
+    );
+  }
+
+  // ---- Load members ----
+  async function loadMembers() {
+    const { data } = await getSupabase()
+      .from('profiles')
+      .select('id, full_name, division')
+      .eq('is_active', true)
+      .eq('role', 'member')
+      .order('full_name');
+    allMembers = data || [];
+  }
+
+  // ---- Manual attendance modal ----
+  async function openManualModal(sessionId, sessionTitle) {
+    manualSessionId = sessionId;
+    document.getElementById('manual-title').textContent = `Absensi: ${sessionTitle}`;
+    document.getElementById('manual-modal').style.display = 'flex';
+
+    const listEl = document.getElementById('manual-list');
+    listEl.innerHTML = `<div class="empty-state"><div class="spinner spinner-dark"></div></div>`;
+
+    // Ambil existing attendance
+    const { data: existing } = await getSupabase()
+      .from('attendance')
+      .select('user_id, status, notes')
+      .eq('session_id', sessionId);
+
+    const existMap = {};
+    (existing||[]).forEach(a => existMap[a.user_id] = a);
+
+    // Ambil leave requests
+    const { data: leaves } = await getSupabase()
+      .from('leave_requests')
+      .select('user_id, reason')
+      .eq('session_id', sessionId);
+    const leaveSet = new Set((leaves||[]).map(l => l.user_id));
+
+    listEl.innerHTML = allMembers.map(m => {
+      const att   = existMap[m.id];
+      const status = att?.status || (leaveSet.has(m.id) ? 'izin' : '');
+      return `
+      <div class="member-row">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">${m.full_name}</div>
+          <div style="font-size:12px;color:#888">${m.division||'—'}</div>
+        </div>
+        <select id="att-${m.id}" style="padding:5px 8px;font-size:12px;
+          border:1px solid #e0e0e0;border-radius:6px;font-family:inherit">
+          <option value="">— Belum —</option>
+          <option value="hadir"  ${status==='hadir' ?'selected':''}>Hadir</option>
+          <option value="izin"   ${status==='izin'  ?'selected':''}>Izin</option>
+          <option value="sakit"  ${status==='sakit' ?'selected':''}>Sakit</option>
+          <option value="alpha"  ${status==='alpha' ?'selected':''}>Alpha</option>
+        </select>
+      </div>`;
+    }).join('');
+  }
+
+  function closeManualModal() {
+    document.getElementById('manual-modal').style.display = 'none';
+    manualSessionId = null;
+  }
+
+  async function saveManualAttend() {
+    if (!manualSessionId) return;
+    const btn = document.getElementById('btn-save-manual');
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      const upserts = allMembers
+        .map(m => {
+          const status = document.getElementById(`att-${m.id}`)?.value;
+          if (!status) return null;
+          return {
+            session_id:  manualSessionId,
+            user_id:     m.id,
+            status,
+            method:      'manual',
+            created_by:  profile.id,
+          };
+        })
+        .filter(Boolean);
+
+      if (upserts.length > 0) {
+        const { error } = await getSupabase()
+          .from('attendance')
+          .upsert(upserts, { onConflict: 'session_id,user_id' });
+        if (error) throw error;
+      }
+
+      showToast('Absensi berhasil disimpan!', 'success');
+      closeManualModal();
+    } catch(err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(btn, false, 'Simpan Semua');
+    }
+  }
+
+  // ---- Rekap ----
+  async function loadRecap() {
+    const sessionId = document.getElementById('recap-session').value;
+    if (!sessionId) return;
+    const el = document.getElementById('recap-content');
+    el.innerHTML = `<div class="empty-state"><div class="spinner spinner-dark"></div></div>`;
+
+    const { data } = await getSupabase()
+      .from('attendance')
+      .select('*, profiles!user_id(full_name, division)')
+      .eq('session_id', sessionId)
+      .order('profiles(full_name)');
+
+    allRecap = data || [];
+    filterRecap();
+  }
+
+  function filterRecap() {
+    const statusFilter = document.getElementById('recap-status').value;
+    const data = statusFilter ? allRecap.filter(a => a.status === statusFilter) : allRecap;
+    const el   = document.getElementById('recap-content');
+
+    if (data.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-text">Tidak ada data</div></div>`;
+      return;
+    }
+
+    // Stats
+    const counts = { hadir:0, izin:0, sakit:0, alpha:0 };
+    allRecap.forEach(a => counts[a.status] = (counts[a.status]||0)+1);
+    const total = allRecap.length;
+    const pct   = total > 0 ? Math.round((counts.hadir/total)*100) : 0;
+
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px">
+          ${['hadir','izin','sakit','alpha'].map(s => `
+          <div style="text-align:center;padding:10px;border-radius:8px;
+            background:${s==='hadir'?'#e8f5e9':s==='izin'?'#e3f2fd':s==='sakit'?'#fff3e0':'#ffebee'}">
+            <div style="font-size:20px;font-weight:700;
+              color:${s==='hadir'?'#2e7d32':s==='izin'?'#1565c0':s==='sakit'?'#e65100':'#c62828'}">
+              ${counts[s]}</div>
+            <div style="font-size:12px;color:#888;text-transform:capitalize">${s}</div>
+          </div>`).join('')}
+        </div>
+        <div style="font-size:13px;margin-bottom:6px;
+          display:flex;justify-content:space-between">
+          <span>Kehadiran</span>
+          <strong>${pct}% (${counts.hadir}/${total})</strong>
+        </div>
+        <div style="height:8px;background:#e0e0e0;border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:#2e7d32;border-radius:99px"></div>
+        </div>
+      </div>
+      <div class="card">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px 12px;background:#1a1a2e;
+                color:#fff;font-size:11px">Member</th>
+              <th style="padding:8px;background:#1a1a2e;color:#fff;font-size:11px">Divisi</th>
+              <th style="padding:8px;background:#1a1a2e;color:#fff;font-size:11px">Status</th>
+              <th style="padding:8px;background:#1a1a2e;color:#fff;font-size:11px">Jam Masuk</th>
+              <th style="padding:8px;background:#1a1a2e;color:#fff;font-size:11px">Metode</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(a => `
+            <tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:10px 12px;font-weight:500">${a.profiles?.full_name||'—'}</td>
+              <td style="padding:8px;color:#888;font-size:12px">${a.profiles?.division||'—'}</td>
+              <td style="padding:8px;text-align:center">
+                <span class="status-badge badge-${a.status}">${a.status}</span>
+              </td>
+              <td style="padding:8px;color:#888;font-size:12px;text-align:center">
+                ${a.check_in_time
+                  ? new Date(a.check_in_time).toLocaleTimeString('id-ID',
+                    {hour:'2-digit',minute:'2-digit'})
+                  : '—'}
+              </td>
+              <td style="padding:8px;color:#aaa;font-size:12px;text-align:center">
+                ${a.method||'—'}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // ---- Leave requests ----
+  async function loadLeaveList() {
+    const { data } = await getSupabase()
+      .from('leave_requests')
+      .select('*, profiles!user_id(full_name,division), sessions(title,date)')
+      .order('created_at', { ascending: false });
+
+    const el = document.getElementById('leave-list');
+    if (!data || data.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-text">Belum ada pengajuan izin</div></div>`;
+      return;
+    }
+    el.innerHTML = data.map(l => `
+      <div style="padding:12px 0;border-bottom:1px solid #f0f0f0">
+        <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:500">${l.profiles?.full_name||'—'}</div>
+            <div style="font-size:12px;color:#888">
+              ${l.profiles?.division||'—'} ·
+              ${l.sessions?.title||'—'} ·
+              ${formatDateOnly(l.sessions?.date)}
+            </div>
+            <div style="font-size:13px;color:#444;margin-top:6px;
+              padding:6px 10px;background:#f9f9f9;border-radius:6px;
+              border-left:3px solid #c9a84c;font-style:italic">
+              "${l.reason}"
+            </div>
+          </div>
+          <span style="background:#e8f5e9;color:#2e7d32;padding:3px 10px;
+            border-radius:20px;font-size:12px;font-weight:600;flex-shrink:0">
+            ✓ Disetujui
+          </span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // ---- QR Code ----
+  async function loadQR() {
+    const { data } = await getSupabase()
+      .from('qr_venues')
+      .select('*')
+      .eq('is_active', true)
+      .single();
+
+    const el = document.getElementById('qr-container');
+    if (!data) {
+      el.innerHTML = `<div style="color:#c62828">QR tidak ditemukan di database.</div>`;
+      return;
+    }
+
+    const url = `https://olittleharmony.github.io/lho-attendance/checkin.html?token=${data.qr_token}`;
+    document.getElementById('qr-url').textContent = url;
+
+    // Generate QR pakai qrcode.js CDN
+    el.innerHTML = `<div id="qr-img"></div>
+      <div style="margin-top:12px;font-size:13px;font-weight:600">${data.name}</div>`;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload = () => {
+      new QRCode(document.getElementById('qr-img'), {
+        text:   url,
+        width:  220, height: 220,
+        colorDark:'#1a1a2e', colorLight:'#ffffff',
+      });
+    };
+    document.body.appendChild(script);
+  }
+
+  function printQR() {
+    window.print();
+  }
+
+  // ---- Session modal ----
+  function openSessionModal() {
+    editingSession = null;
+    document.getElementById('modal-title').textContent = 'Buat Sesi Baru';
+    ['s-title','s-location','s-desc','s-start','s-end'].forEach(id =>
+      document.getElementById(id).value = '');
+    document.getElementById('s-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('s-type').value = 'latihan';
+    document.getElementById('modal-error').style.display = 'none';
+    document.getElementById('session-modal').style.display = 'flex';
+  }
+
+  function editSession(id) {
+    const s = allSessions.find(x => x.id === id);
+    if (!s) return;
+    editingSession = id;
+    document.getElementById('modal-title').textContent = 'Edit Sesi';
+    document.getElementById('s-title').value    = s.title || '';
+    document.getElementById('s-type').value     = s.type  || 'latihan';
+    document.getElementById('s-date').value     = s.date  || '';
+    document.getElementById('s-start').value    = s.start_time?.slice(0,5) || '';
+    document.getElementById('s-end').value      = s.end_time?.slice(0,5)   || '';
+    document.getElementById('s-location').value = s.location    || '';
+    document.getElementById('s-desc').value     = s.description || '';
+    document.getElementById('modal-error').style.display = 'none';
+    document.getElementById('session-modal').style.display = 'flex';
+  }
+
+  function closeSessionModal() {
+    document.getElementById('session-modal').style.display = 'none';
+  }
+
+  async function saveSession() {
+    const title = document.getElementById('s-title').value.trim();
+    const date  = document.getElementById('s-date').value;
+    const errEl = document.getElementById('modal-error');
+    const btn   = document.getElementById('btn-save-session');
+    errEl.style.display = 'none';
+
+    if (!title || !date) {
+      errEl.textContent = 'Judul dan tanggal wajib diisi.';
+      errEl.style.display = 'block'; return;
+    }
+
+    const payload = {
+      title,
+      type:        document.getElementById('s-type').value,
+      date,
+      start_time:  document.getElementById('s-start').value || null,
+      end_time:    document.getElementById('s-end').value   || null,
+      location:    document.getElementById('s-location').value.trim() || null,
+      description: document.getElementById('s-desc').value.trim()     || null,
+    };
+
+    setLoading(btn, true, 'Menyimpan...');
+    try {
+      if (editingSession) {
+        const { error } = await getSupabase()
+          .from('sessions').update(payload).eq('id', editingSession);
+        if (error) throw error;
+      } else {
+        const { error } = await getSupabase()
+          .from('sessions')
+          .insert({ ...payload, created_by: profile.id });
+        if (error) throw error;
+      }
+      showToast('Sesi berhasil disimpan!', 'success');
+      closeSessionModal();
+      await loadSessions();
+    } catch(err) {
+      errEl.textContent = err.message;
+      errEl.style.display = 'block';
+    } finally {
+      setLoading(btn, false, 'Simpan Sesi');
+    }
+  }
+
+  async function deleteSession(id) {
+    showModal('Hapus Sesi', 'Hapus sesi ini? Data absensi terkait juga akan terhapus.',
+      async () => {
+        const { error } = await getSupabase().from('sessions').delete().eq('id', id);
+        if (error) { showToast(error.message, 'error'); return; }
+        showToast('Sesi dihapus.', 'info');
+        await loadSessions();
+      }, 'Ya, Hapus'
+    );
+  }
+
+  async function exportRecap() {
+    const sessionId = document.getElementById('recap-session').value;
+    if (!sessionId || allRecap.length === 0) {
+      showToast('Pilih sesi dulu.', 'warning'); return;
+    }
+    const session = allSessions.find(s => s.id === sessionId);
+    const btn = event.target;
+    setLoading(btn, true, 'Export...');
+    try {
+      await fetch(APP_CONFIG.GAS_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    JSON.stringify({
+          action:    'syncToSheets',
+          target:    'attendance',
+          sessionId,
+          sessionTitle: session?.title,
+          data:      allRecap,
+        }),
+      });
+      showToast('Rekap berhasil di-export ke Sheets!', 'success');
+    } catch(err) {
+      showToast('Export gagal: ' + err.message, 'error');
+    } finally {
+      setLoading(btn, false, '↑ Export');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
