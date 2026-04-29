@@ -304,10 +304,17 @@
       }
 
       // Kirim notif email
-      const notifType = result.type === 'reimburse' ? 'reimburse_approved' : 'kas_confirmed';
+      const isDonasi  = result.type === 'donasi';
+      const notifType = result.type === 'reimburse' ? 'reimburse_approved'
+                      : result.type === 'donasi'    ? 'donasi_confirmed'
+                      : 'kas_confirmed';
       try {
         await sendNotification(notifType, member.email, member.full_name, {
-          period: result.period, amount: result.amount, title: result.title,
+          period: isDonasi
+            ? new Date(result.created_at).toLocaleDateString('id-ID',
+                {day:'numeric',month:'long',year:'numeric'})
+            : result.period,
+          amount: result.amount, title: result.title,
           confirmedAt: formatDate(result.reviewed_at),
           confirmedBy: profile.full_name, appUrl: APP_CONFIG.APP_URL,
         });
