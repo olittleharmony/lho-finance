@@ -123,20 +123,55 @@
       <tr>
         <td>${typeBadge(p.type)}</td>
         <td>
-          <div style="font-weight:500">${p.type === 'kas' ? 'Kas ' + formatPeriod(p.period) : p.title}</div>
-          ${p.type === 'reimburse' ? `<div style="font-size:12px;color:#888">${p.category}</div>` : ''}
+          <div style="font-weight:500">${p.type === 'kas' ? 'Kas ' + formatPeriod(p.period) : p.title || '—'}</div>
+          ${p.type === 'reimburse' ? `<div style="font-size:12px;color:#888">${p.category||''}</div>` : ''}
           ${p.review_notes && p.status === 'rejected' ? `<div style="font-size:12px;color:#c62828;margin-top:2px">${p.review_notes}</div>` : ''}
         </td>
         <td style="font-weight:600;white-space:nowrap">${formatRupiah(p.amount)}</td>
         <td style="white-space:nowrap;font-size:13px">${formatDate(p.created_at)}</td>
         <td>${statusBadge(p.status)}</td>
-        <td>
+        <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           ${p.proof_url
             ? `<a href="${p.proof_url}" target="_blank" class="btn btn-ghost btn-sm">Lihat ↗</a>`
+            : ''}
+          ${p.status === 'pending'
+            ? `<button onclick="cancelPayment('${p.id}','${p.type}','${(p.title||formatPeriod(p.period)||'').replace(/'/g,"\\'")}','${formatRupiah(p.amount)}')"
+                style="background:none;border:1px solid #c62828;color:#c62828;
+                  border-radius:6px;padding:3px 10px;font-size:12px;font-family:inherit;
+                  cursor:pointer;white-space:nowrap">
+                Batalkan
+              </button>`
             : '<span style="color:#aaa;font-size:13px">—</span>'}
         </td>
       </tr>
     `).join('');
+  }
+
+  async function cancelPayment(id, type, title, nominal) {
+    showModal(
+      'Batalkan Transaksi',
+      `Batalkan <strong>${type === 'kas' ? 'pembayaran kas' : type} "${title}"</strong>
+       sebesar <strong>${nominal}</strong>?<br><br>
+       <span style="font-size:13px;color:#555">
+         Transaksi yang dibatalkan akan dihapus dari sistem.
+       </span>`,
+      async () => {
+        try {
+          const { error } = await getSupabase()
+            .from('payments')
+            .delete()
+            .eq('id', id)
+            .eq('status', 'pending'); // double-check masih pending
+          if (error) throw error;
+          showToast('Transaksi berhasil dibatalkan.', 'success');
+          allPayments = await getMyPayments();
+          applyFilter();
+        } catch(err) {
+          showToast('Gagal membatalkan: ' + err.message, 'error');
+        }
+      },
+      'Ya, Batalkan'
+    );
   }
 
   init();
