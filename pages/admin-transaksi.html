@@ -667,18 +667,49 @@
             </div>
             ${t.notes ? `<div style="font-size:12px;color:#888;font-style:italic">"${t.notes}"</div>` : ''}
           </div>
-          <div style="text-align:right;flex-shrink:0">
+          <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end">
             <div style="font-size:15px;font-weight:700;
               color:${t.type==='pemasukan'?'#2e7d32':'#c62828'}">
               ${t.type==='pemasukan'?'+':'−'}${formatRupiah(t.amount)}
             </div>
             ${t.proof_url
               ? `<a href="${t.proof_url}" target="_blank"
-                  class="btn btn-ghost btn-sm" style="margin-top:4px">Bukti ↗</a>`
+                  class="btn btn-ghost btn-sm">Bukti ↗</a>`
               : ''}
+            <button onclick="deleteTransaction('${t.id}', '${(t.title||'').replace(/'/g,"\\'")}', '${formatRupiah(t.amount)}')"
+              style="background:none;border:none;color:#c62828;cursor:pointer;
+                font-size:12px;padding:2px 6px;border-radius:4px;
+                transition:background .15s;font-family:inherit"
+              onmouseover="this.style.background='#ffebee'"
+              onmouseout="this.style.background='none'">
+              🗑 Hapus
+            </button>
           </div>
         </div>
       </div>`).join('')}`;
+  }
+
+  async function deleteTransaction(id, title, nominal) {
+    showModal(
+      'Hapus Transaksi',
+      `Hapus transaksi <strong>"${title}"</strong> sebesar <strong>${nominal}</strong>?<br>
+       <span style="color:#c62828;font-size:13px">Tindakan ini tidak bisa dibatalkan.</span>`,
+      async () => {
+        try {
+          const { error } = await getSupabase()
+            .from('transactions')
+            .delete()
+            .eq('id', id);
+          if (error) throw error;
+          showToast('Transaksi berhasil dihapus.', 'success');
+          await loadHistory();
+        } catch(err) {
+          showToast('Gagal hapus: ' + err.message, 'error');
+        }
+      },
+      'Ya, Hapus',
+      'danger'
+    );
   }
 
   function checkGrid() {
