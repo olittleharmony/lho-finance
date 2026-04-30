@@ -52,9 +52,9 @@
           <select id="filter-year" onchange="loadData()"></select>
         </div>
         <div class="form-group">
-          <label>Bulan (untuk filter)</label>
-          <select id="filter-month">
-            <option value="">Semua bulan</option>
+          <label>Bulan</label>
+          <select id="filter-month" onchange="renderView()">
+            <option value="">Bulan ini</option>
             <option value="01">Januari</option>
             <option value="02">Februari</option>
             <option value="03">Maret</option>
@@ -234,27 +234,34 @@
     return profiles;
   }
 
+  // Helper: ambil period yang dipilih (year + bulan filter)
+  function getSelectedPeriod() {
+    const year  = document.getElementById('filter-year').value;
+    const month = document.getElementById('filter-month').value;
+    const now   = new Date();
+    const m     = month || String(now.getMonth()+1).padStart(2,'0');
+    return `${year}-${m}`;
+  }
+
   function renderView() {
-    const mode = document.getElementById('view-mode').value;
-    const year = document.getElementById('filter-year').value;
+    const mode   = document.getElementById('view-mode').value;
+    const year   = document.getElementById('filter-year').value;
+    const period = getSelectedPeriod();
     const titles = {
       heatmap:       'Heatmap Pembayaran Kas ' + year,
-      'belum-bayar': 'Member Belum Bayar Bulan Ini',
-      'sudah-lunas': 'Member Sudah Lunas Bulan Ini',
+      'belum-bayar': 'Belum Bayar — ' + formatPeriod(period),
+      'sudah-lunas': 'Sudah Lunas — ' + formatPeriod(period),
       tunggakan:     'Semua Tunggakan ' + year,
     };
     document.getElementById('view-title').textContent = titles[mode];
 
     if (mode === 'heatmap')     renderHeatmap(year);
-    if (mode === 'belum-bayar') renderBelumBayar(year);
-    if (mode === 'sudah-lunas') renderSudahLunas(year);
+    if (mode === 'belum-bayar') renderBelumBayar(period);
+    if (mode === 'sudah-lunas') renderSudahLunas(period);
     if (mode === 'tunggakan')   renderTunggakan(year);
   }
 
-  function renderSudahLunas(year) {
-    const now    = new Date();
-    const month  = String(now.getMonth()+1).padStart(2,'0');
-    const period = `${year}-${month}`;
+  function renderSudahLunas(period) {
     const [thisYear, thisMonth] = period.split('-').map(Number);
 
     const profiles = getFilteredProfiles().filter(p => {
@@ -409,10 +416,7 @@
       </div>`;
   }
 
-  function renderBelumBayar(year) {
-    const now    = new Date();
-    const month  = String(now.getMonth()+1).padStart(2,'0');
-    const period = `${year}-${month}`;
+  function renderBelumBayar(period) {
     const [thisYear, thisMonth] = period.split('-').map(Number);
 
     const profiles = getFilteredProfiles().filter(p => {
