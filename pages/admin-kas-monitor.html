@@ -43,6 +43,7 @@
           <select id="view-mode" onchange="renderView()">
             <option value="heatmap">Heatmap per bulan</option>
             <option value="belum-bayar">Belum bayar bulan ini</option>
+            <option value="sudah-lunas">Sudah lunas bulan ini</option>
             <option value="tunggakan">Semua tunggakan</option>
           </select>
         </div>
@@ -237,15 +238,81 @@
     const mode = document.getElementById('view-mode').value;
     const year = document.getElementById('filter-year').value;
     const titles = {
-      heatmap:    'Heatmap Pembayaran Kas ' + year,
+      heatmap:       'Heatmap Pembayaran Kas ' + year,
       'belum-bayar': 'Member Belum Bayar Bulan Ini',
-      tunggakan:  'Semua Tunggakan ' + year,
+      'sudah-lunas': 'Member Sudah Lunas Bulan Ini',
+      tunggakan:     'Semua Tunggakan ' + year,
     };
     document.getElementById('view-title').textContent = titles[mode];
 
     if (mode === 'heatmap')     renderHeatmap(year);
     if (mode === 'belum-bayar') renderBelumBayar(year);
+    if (mode === 'sudah-lunas') renderSudahLunas(year);
     if (mode === 'tunggakan')   renderTunggakan(year);
+  }
+
+  function renderSudahLunas(year) {
+    const now    = new Date();
+    const month  = String(now.getMonth()+1).padStart(2,'0');
+    const period = `${year}-${month}`;
+    const [thisYear, thisMonth] = period.split('-').map(Number);
+
+    const profiles = getFilteredProfiles().filter(p => {
+      if (!p.joined_at) return true;
+      const j = new Date(p.joined_at);
+      return j.getFullYear() < thisYear ||
+        (j.getFullYear() === thisYear && j.getMonth() + 1 <= thisMonth);
+    });
+
+    const lunasIds   = new Set(allPayments
+      .filter(p => p.period === period && p.status === 'confirmed')
+      .map(p => p.user_id));
+    const pendingIds = new Set(allPayments
+      .filter(p => p.period === period && p.status === 'pending')
+      .map(p => p.user_id));
+
+    const lunas   = profiles.filter(p => lunasIds.has(p.id));
+    const pending = profiles.filter(p => pendingIds.has(p.id));
+    const el      = document.getElementById('main-content');
+
+    if (lunas.length === 0 && pending.length === 0) {
+      el.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <div class="empty-text">Belum ada yang bayar ${formatPeriod(period)}</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      ${lunas.length > 0 ? `
+        <h4 style="font-size:14px;color:#2e7d32;margin-bottom:10px">
+          ✓ Sudah lunas (${lunas.length} member)
+        </h4>
+        <div style="margin-bottom:20px">
+          ${lunas.map(p => `
+            <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:7px 10px;background:#e8f5e9;border-radius:6px;margin-bottom:4px">
+              <div>
+                <div style="font-size:13px;font-weight:500">${p.full_name}</div>
+                <div style="font-size:11px;color:#888">${p.division||'—'}</div>
+              </div>
+              <span style="font-size:11px;font-weight:600;color:#2e7d32">Lunas ✓</span>
+            </div>`).join('')}
+        </div>` : ''}
+      ${pending.length > 0 ? `
+        <h4 style="font-size:14px;color:#e65100;margin-bottom:10px">
+          ⏳ Menunggu konfirmasi (${pending.length} member)
+        </h4>
+        ${pending.map(p => `
+          <div style="display:flex;align-items:center;justify-content:space-between;
+            padding:7px 10px;background:#fff8f0;border-radius:6px;margin-bottom:4px">
+            <div>
+              <div style="font-size:13px;font-weight:500">${p.full_name}</div>
+              <div style="font-size:11px;color:#888">${p.division||'—'}</div>
+            </div>
+            <a href="admin-validasi.html" style="font-size:11px;color:#e65100;
+              font-weight:600;text-decoration:none">Validasi →</a>
+          </div>`).join('')}` : ''}`;
   }
 
   function renderHeatmap(year) {
