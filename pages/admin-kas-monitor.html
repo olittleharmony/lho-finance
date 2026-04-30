@@ -54,7 +54,8 @@
         <div class="form-group">
           <label>Bulan</label>
           <select id="filter-month" onchange="renderView()">
-            <option value="">Bulan ini</option>
+            <option value="">Semua Bulan</option>
+            <option value="00">Bulan Ini</option>
             <option value="01">Januari</option>
             <option value="02">Februari</option>
             <option value="03">Maret</option>
@@ -234,34 +235,63 @@
     return profiles;
   }
 
-  // Helper: ambil period yang dipilih (year + bulan filter)
   function getSelectedPeriod() {
     const year  = document.getElementById('filter-year').value;
     const month = document.getElementById('filter-month').value;
     const now   = new Date();
-    const m     = month || String(now.getMonth()+1).padStart(2,'0');
-    return `${year}-${m}`;
+    if (month === '' )   return null; // semua bulan
+    if (month === '00')  return `${year}-${String(now.getMonth()+1).padStart(2,'0')}`; // bulan ini
+    return `${year}-${month}`;
   }
 
   function renderView() {
     const mode   = document.getElementById('view-mode').value;
     const year   = document.getElementById('filter-year').value;
     const period = getSelectedPeriod();
+    const periodLabel = period ? formatPeriod(period) : `Semua Bulan ${year}`;
+
     const titles = {
       heatmap:       'Heatmap Pembayaran Kas ' + year,
-      'belum-bayar': 'Belum Bayar — ' + formatPeriod(period),
-      'sudah-lunas': 'Sudah Lunas — ' + formatPeriod(period),
+      'belum-bayar': 'Belum Bayar — ' + periodLabel,
+      'sudah-lunas': 'Sudah Lunas — ' + periodLabel,
       tunggakan:     'Semua Tunggakan ' + year,
     };
     document.getElementById('view-title').textContent = titles[mode];
 
     if (mode === 'heatmap')     renderHeatmap(year);
-    if (mode === 'belum-bayar') renderBelumBayar(period);
-    if (mode === 'sudah-lunas') renderSudahLunas(period);
+    if (mode === 'belum-bayar') renderBelumBayar(period, year);
+    if (mode === 'sudah-lunas') renderSudahLunas(period, year);
     if (mode === 'tunggakan')   renderTunggakan(year);
   }
 
-  function renderSudahLunas(period) {
+  function renderSudahLunas(period, year) {
+    // Kalau semua bulan — tampilkan rekap lunas per bulan
+    if (!period) {
+      const now      = new Date();
+      const maxMonth = Number(year) === now.getFullYear() ? now.getMonth() + 1 : 12;
+      const el       = document.getElementById('main-content');
+      let html       = '';
+
+      for (let m = 1; m <= maxMonth; m++) {
+        const p        = `${year}-${String(m).padStart(2,'0')}`;
+        const lunasIds = new Set(allPayments.filter(x => x.period===p && x.status==='confirmed').map(x=>x.user_id));
+        const lunas    = getFilteredProfiles().filter(pr => lunasIds.has(pr.id));
+        if (lunas.length > 0) {
+          html += `
+          <div style="margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <h4 style="font-size:14px;color:#2e7d32">${formatPeriod(p)}</h4>
+              <span style="font-size:13px;color:#888">${lunas.length} lunas</span>
+            </div>
+            ${lunas.map(pr => memberRow(pr,'confirmed')).join('')}
+          </div>`;
+        }
+      }
+
+      el.innerHTML = html || `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Belum ada yang lunas</div></div>`;
+      return;
+    }
+
     const [thisYear, thisMonth] = period.split('-').map(Number);
 
     const profiles = getFilteredProfiles().filter(p => {
@@ -416,7 +446,43 @@
       </div>`;
   }
 
-  function renderBelumBayar(period) {
+  function renderBelumBayar(period, year) {
+    // Kalau semua bulan — tampilkan per bulan seperti tunggakan tapi include pending
+    if (!period) {
+      const now      = new Date();
+      const maxMonth = Number(year) === now.getFullYear() ? now.getMonth() + 1 : 12;
+      const el       = document.getElementById('main-content');
+      const rows     = [];
+
+      for (let m = 1; m <= maxMonth; m++) {
+        const p          = `${year}-${String(m).padStart(2,'0')}`;
+        const [py, pm]   = p.split('-').map(Number);
+        const lunasIds   = new Set(allPayments.filter(x => x.period===p && x.status==='confirmed').map(x=>x.user_id));
+        const pendingIds = new Set(allPayments.filter(x => x.period===p && x.status==='pending').map(x=>x.user_id));
+        const wajib      = getFilteredProfiles().filter(pr => {
+          if (!pr.joined_at) return true;
+          const j = new Date(pr.joined_at);
+          return j.getFullYear() < py || (j.getFullYear()===py && j.getMonth()+1<=pm);
+        });
+        const belum = wajib.filter(pr => !lunasIds.has(pr.id) && !pendingIds.has(pr.id));
+        if (belum.length > 0) rows.push({ period: p, belum });
+      }
+
+      if (rows.length === 0) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-icon">✓</div><div class="empty-text">Tidak ada tunggakan!</div></div>`;
+        return;
+      }
+      el.innerHTML = rows.map(r => `
+        <div style="margin-bottom:16px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <h4 style="font-size:14px;color:#c62828">${formatPeriod(r.period)}</h4>
+            <span style="font-size:13px;color:#888">${r.belum.length} belum bayar</span>
+          </div>
+          ${r.belum.map(p => memberRow(p,'empty')).join('')}
+        </div>`).join('');
+      return;
+    }
+
     const [thisYear, thisMonth] = period.split('-').map(Number);
 
     const profiles = getFilteredProfiles().filter(p => {
@@ -507,8 +573,9 @@
 
   function memberRow(p, status) {
     const colors = {
-      pending: { bg:'#fff3e0', color:'#e65100', label:'Pending' },
-      empty:   { bg:'#ffebee', color:'#c62828', label:'Belum bayar' },
+      pending:   { bg:'#fff3e0', color:'#e65100', label:'Pending' },
+      empty:     { bg:'#ffebee', color:'#c62828', label:'Belum bayar' },
+      confirmed: { bg:'#e8f5e9', color:'#2e7d32', label:'Lunas ✓' },
     };
     const c = colors[status] || colors.empty;
     return `
